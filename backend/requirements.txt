@@ -1,0 +1,35 @@
+# --- Web / API ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pydantic==2.10.4
+pydantic-settings==2.7.1
+email-validator==2.2.0
+
+# --- Database ---
+SQLAlchemy==2.0.36
+alembic==1.14.0
+psycopg[binary]==3.2.3
+
+# --- Auth ---
+PyJWT==2.10.1
+
+# --- Background jobs (optional: only used when TASK_BACKEND=celery) ---
+celery==5.4.0
+redis==5.2.1
+
+# --- Video ingestion & transcription ---
+yt-dlp>=2025.1.1
+youtube-transcript-api>=1.0.3
+
+# --- AI / HTTP ---
+httpx==0.28.1
+rank-bm25==0.2.2
+
+# --- PDF generation (Arabic RTL + English LTR) ---
+reportlab==4.2.5
+arabic-reshaper==3.0.0
+python-bidi==0.6.3
+
+# --- Observability ---
+prometheus-client==0.21.1

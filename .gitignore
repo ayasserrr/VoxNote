@@ -1,0 +1,25 @@
+# secrets
+.env
+*.env.local
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+backend/data/
+
+# node
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# misc
+.DS_Store
+.idea/
+.vscode/
+*.log

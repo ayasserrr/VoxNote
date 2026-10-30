@@ -1,0 +1,20 @@
+[project]
+name = "voxnote-backend"
+version = "1.0.0"
+description = "VoxNote - AI-powered video knowledge extraction (API + workers)"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["B008", "UP038"]  # FastAPI Depends() in defaults; tuple isinstance is fine
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
