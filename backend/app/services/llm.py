@@ -1,21 +1,25 @@
-"""Provider-agnostic LLM client focused on FREE models.
+"""Provider-agnostic LLM client that uses only FREE models.
 
 Every supported provider exposes an OpenAI-compatible `/chat/completions`
 endpoint, so one small httpx client covers all of them:
 
-| provider      | free option                                   | key from                          |
-|---------------|-----------------------------------------------|-----------------------------------|
-| groq          | llama-3.3-70b-versatile (free tier)           | https://console.groq.com/keys     |
-| gemini        | gemini-2.5-flash (free tier)                  | https://aistudio.google.com/apikey|
-| openrouter    | `openrouter/free` or any `:free` model        | https://openrouter.ai/keys        |
-| ollama        | any local model, 100% free & offline          | https://ollama.com                |
-| openai_compat | LM Studio, vLLM, Together, ...                | -                                 |
-| mock          | deterministic offline extractor (tests/demo)  | -                                 |
+| provider      | cost                                              | key from                            |
+|---------------|---------------------------------------------------|-------------------------------------|
+| groq          | free tier, no credit card                         | https://console.groq.com/keys       |
+| gemini        | free tier, no credit card (not in EU/UK/CH)       | https://aistudio.google.com/apikey  |
+| cerebras      | free tier, no credit card                         | https://cloud.cerebras.ai           |
+| mistral       | free "Experiment" plan (phone verification)       | https://console.mistral.ai/api-keys |
+| openrouter    | `:free` models at $0 (~50 requests/day)           | https://openrouter.ai/keys          |
+| ollama        | runs locally: unlimited, offline                  | https://ollama.com                  |
+| openai_compat | LM Studio, vLLM, llama.cpp, ...                   | -                                   |
+| mock          | deterministic offline extractor (tests/demo)      | -                                   |
 
-Providers are tried in the order of LLM_PROVIDERS; when one is rate limited
-or down the client falls back to the next configured provider. Responses are
-parsed as JSON and validated with Pydantic, with one automatic "repair" round
-when a model returns malformed JSON.
+Model names are NOT hard-coded. `services/free_models.py` discovers the
+currently available free models from each provider's live model list,
+because free models get retired regularly. The chain holds one entry per
+(provider, model), so when a model is rate limited, retired or out of quota,
+the next one is used. Responses are parsed as JSON and validated with
+Pydantic, with one automatic "repair" round for malformed JSON.
 """
 
 from __future__ import annotations
@@ -83,56 +87,107 @@ class UsageTracker:
         self.last_provider, self.last_model = r.provider, r.model
 
 
-def configured_providers() -> list[Provider]:
+_PROVIDER_KEYS = {
+    "groq": ("groq_api_key", "groq_base_url", "groq_model"),
+    "gemini": ("gemini_api_key", "gemini_base_url", "gemini_model"),
+    "cerebras": ("cerebras_api_key", "cerebras_base_url", "cerebras_model"),
+    "mistral": ("mistral_api_key", "mistral_base_url", "mistral_model"),
+    "openrouter": ("openrouter_api_key", "openrouter_base_url", "openrouter_model"),
+}
+
+
+def _provider_config(name: str) -> tuple[str | None, str | None, str | None, bool]:
+    """(api_key, base_url, model_setting, enabled) for a provider name."""
     s = settings
+    if name in _PROVIDER_KEYS:
+        k, b, m = _PROVIDER_KEYS[name]
+        key = getattr(s, k)
+        return key, getattr(s, b), getattr(s, m), bool(key)
+    if name == "ollama":
+        return None, s.ollama_base_url, s.ollama_model, s.ollama_enabled
+    if name == "openai_compat":
+        return (s.openai_compat_api_key, s.openai_compat_base_url, s.openai_compat_model,
+                bool(s.openai_compat_base_url and s.openai_compat_model))
+    if name == "mock":
+        return None, "", "voxnote-mock-1", True
+    return None, None, None, False
+
+
+def configured_providers() -> list[Provider]:
+    """The fallback chain: one entry per (provider, model), in LLM_PROVIDERS order.
+
+    Several free models per provider are included because free quotas are usually
+    per model: when one model is rate limited, the next one still has quota.
+    """
+    from app.services.free_models import resolve_models
+
     out: list[Provider] = []
-    for name in s.provider_list:
-        if name == "groq" and s.groq_api_key:
-            out.append(Provider("groq", s.groq_base_url, s.groq_model, s.groq_api_key))
-        elif name == "gemini" and s.gemini_api_key:
-            out.append(Provider("gemini", s.gemini_base_url, s.gemini_model, s.gemini_api_key))
-        elif name == "openrouter" and s.openrouter_api_key:
-            out.append(
-                Provider(
-                    "openrouter",
-                    s.openrouter_base_url,
-                    s.openrouter_model,
-                    s.openrouter_api_key,
-                    headers={"HTTP-Referer": "https://github.com/ayasserrr/VoxNote", "X-Title": "VoxNote"},
-                )
-            )
-        elif name == "ollama" and s.ollama_enabled:
-            out.append(Provider("ollama", s.ollama_base_url, s.ollama_model, None))
-        elif name == "openai_compat" and s.openai_compat_base_url and s.openai_compat_model:
-            out.append(
-                Provider("openai_compat", s.openai_compat_base_url, s.openai_compat_model, s.openai_compat_api_key)
-            )
-        elif name == "mock":
+    for name in settings.provider_list:
+        key, base, model_setting, enabled = _provider_config(name)
+        if not enabled:
+            continue
+        if name == "mock":
             out.append(Provider("mock", "", "voxnote-mock-1"))
+            continue
+        if name == "openai_compat":
+            models = [m.strip() for m in (model_setting or "").split(",") if m.strip()]
+        else:
+            models, _ = resolve_models(name, model_setting, base or "", key, settings.llm_models_per_provider)
+        headers = {}
+        if name == "openrouter":
+            headers = {"HTTP-Referer": "https://github.com/ayasserrr/VoxNote", "X-Title": "VoxNote"}
+        for m in models:
+            out.append(Provider(name, base or "", m, key, headers=dict(headers)))
     return out
 
 
 def provider_status() -> list[dict[str, Any]]:
-    """Which providers are configured (for the settings page)."""
-    active = {p.name: p for p in configured_providers()}
+    """Which free providers are configured and which models were selected (for the Settings page)."""
+    from app.services.free_models import SPECS, resolve_models
+
     rows = []
-    for name, model in (
-        ("groq", settings.groq_model),
-        ("gemini", settings.gemini_model),
-        ("openrouter", settings.openrouter_model),
-        ("ollama", settings.ollama_model),
-        ("openai_compat", settings.openai_compat_model),
-        ("mock", "voxnote-mock-1"),
-    ):
-        rows.append(
-            {
-                "name": name,
-                "model": active[name].model if name in active else model,
-                "configured": name in active,
-                "in_chain": name in settings.provider_list,
-            }
-        )
+    names = ["groq", "gemini", "cerebras", "mistral", "openrouter", "ollama", "openai_compat", "mock"]
+    for name in names:
+        key, base, model_setting, enabled = _provider_config(name)
+        spec = SPECS.get(name)
+        models: list[str] = []
+        how = ""
+        if enabled and name == "mock":
+            models, how = ["voxnote-mock-1"], "built-in"
+        elif enabled and name == "openai_compat":
+            models, how = [m.strip() for m in (model_setting or "").split(",") if m.strip()], "configured"
+        elif enabled:
+            models, how = resolve_models(name, model_setting, base or "", key, settings.llm_models_per_provider)
+        rows.append({
+            "name": name,
+            "label": spec.label if spec else name,
+            "model": ", ".join(models) if models else (model_setting or ""),
+            "models": models,
+            "selection": how,
+            "configured": enabled,
+            "in_chain": name in settings.provider_list,
+            "free": True,
+            "signup_url": spec.signup_url if spec else "",
+            "note": spec.note if spec else "",
+        })
     return rows
+
+
+def test_providers() -> list[dict[str, Any]]:
+    """Send a tiny prompt to every configured provider/model and report the result."""
+    results = []
+    for p in configured_providers():
+        client = LLMClient(providers=[p])
+        t0 = time.monotonic()
+        try:
+            r = client._call_provider(p, [{"role": "user", "content": "Reply with exactly: OK"}],
+                                      json_mode=False, max_tokens=300, temperature=0)
+            results.append({"provider": p.name, "model": p.model, "ok": True, "reply": r.text.strip()[:60],
+                            "seconds": round(time.monotonic() - t0, 2)})
+        except Exception as exc:  # noqa: BLE001
+            results.append({"provider": p.name, "model": p.model, "ok": False, "error": str(exc)[:300],
+                            "seconds": round(time.monotonic() - t0, 2)})
+    return results
 
 
 # --------------------------------------------------------------- JSON utils
@@ -159,6 +214,13 @@ def extract_json(text: str) -> Any:
         return json.loads(candidate)
     except json.JSONDecodeError:
         return json.loads(_TRAILING_COMMA_RE.sub(r"\1", candidate))
+
+
+def _is_reasoning_model(p: Provider) -> bool:
+    m = p.model.lower()
+    if p.name in {"groq", "cerebras"}:
+        return "gpt-oss" in m
+    return p.name == "gemini" and re.search(r"gemini-(3|flash-latest|flash-lite-latest)", m) is not None
 
 
 # ------------------------------------------------------------------ client
@@ -206,6 +268,9 @@ class LLMClient:
         use_json = json_mode and p.supports_json_mode
         if use_json:
             body["response_format"] = {"type": "json_object"}
+        effort = settings.llm_reasoning_effort.lower()
+        if effort and effort != "none" and _is_reasoning_model(p):
+            body["reasoning_effort"] = effort
 
         last_exc: Exception | None = None
         for attempt in range(1, settings.llm_max_retries + 1):
@@ -216,11 +281,22 @@ class LLMClient:
                 last_exc = exc
                 time.sleep(min(2**attempt, 30))
                 continue
-            if resp.status_code == 400 and use_json and "response_format" in resp.text:
-                # Model does not support JSON mode -> retry without it.
-                body.pop("response_format", None)
-                use_json = False
-                continue
+            if resp.status_code == 400:
+                low = resp.text.lower()
+                # Optional parameters a model may not support -> retry without them.
+                if "reasoning_effort" in body and ("reasoning" in low or "unknown" in low or "unsupported" in low):
+                    body.pop("reasoning_effort", None)
+                    continue
+                if use_json and ("response_format" in low or "json" in low):
+                    body.pop("response_format", None)
+                    use_json = False
+                    continue
+            if resp.status_code == 413 or (resp.status_code in (400, 429) and "too large" in resp.text.lower()):
+                # Free tiers cap tokens per request/minute: shrink the output budget and retry.
+                if body["max_tokens"] > 1500:
+                    body["max_tokens"] = max(1500, body["max_tokens"] // 2)
+                    continue
+                raise LLMError(f"{p.name}/{p.model} HTTP {resp.status_code}: request too large for the free tier")
             if resp.status_code in (429, 500, 502, 503, 504):
                 retry_after = resp.headers.get("retry-after")
                 try:
@@ -228,7 +304,7 @@ class LLMClient:
                 except ValueError:
                     wait = 2**attempt * 3
                 LLM_REQUESTS.labels(p.name, f"http_{resp.status_code}").inc()
-                last_exc = LLMError(f"{p.name} HTTP {resp.status_code}: {resp.text[:200]}")
+                last_exc = LLMError(f"{p.name}/{p.model} HTTP {resp.status_code}: {resp.text[:200]}")
                 if wait > 90:  # daily quota exhausted -> fall back to next provider
                     break
                 log.warning("%s returned %s, retrying in %.1fs", p.name, resp.status_code, wait)
@@ -236,12 +312,18 @@ class LLMClient:
                 continue
             if resp.status_code >= 400:
                 LLM_REQUESTS.labels(p.name, f"http_{resp.status_code}").inc()
-                raise LLMError(f"{p.name} HTTP {resp.status_code}: {resp.text[:300]}")
+                raise LLMError(f"{p.name}/{p.model} HTTP {resp.status_code}: {resp.text[:300]}")
             data = resp.json()
             try:
-                text = data["choices"][0]["message"].get("content") or ""
+                choice = data["choices"][0]
+                text = choice["message"].get("content") or ""
             except (KeyError, IndexError, TypeError) as exc:
                 raise LLMError(f"{p.name}: unexpected response shape") from exc
+            if not text.strip():
+                if choice.get("finish_reason") == "length" and body["max_tokens"] < 16000:
+                    body["max_tokens"] = min(body["max_tokens"] * 2, 16000)  # reasoning used up the budget
+                    continue
+                raise LLMError(f"{p.name}/{p.model}: empty response")
             usage = data.get("usage") or {}
             r = LLMResponse(
                 text=text,
@@ -254,7 +336,7 @@ class LLMClient:
             LLM_TOKENS.labels(p.name, "prompt").inc(r.prompt_tokens)
             LLM_TOKENS.labels(p.name, "completion").inc(r.completion_tokens)
             return r
-        raise LLMError(f"{p.name}: giving up after retries ({last_exc})")
+        raise LLMError(f"{p.name}/{p.model}: giving up after retries ({last_exc})")
 
     def complete(
         self,
@@ -272,7 +354,8 @@ class LLMClient:
             )
         errors: list[str] = []
         for p in self.providers:
-            if p.name in self._disabled:
+            pkey = f"{p.name}|{p.model}"
+            if p.name in self._disabled or pkey in self._disabled:
                 continue
             try:
                 r = self._call_provider(
@@ -287,8 +370,11 @@ class LLMClient:
             except LLMError as exc:
                 log.warning("LLM provider %s failed: %s", p.name, exc)
                 errors.append(str(exc))
-                if "HTTP 401" in str(exc) or "HTTP 403" in str(exc):
-                    self._disabled.add(p.name)
+                msg = str(exc).lower()
+                if "http 401" in msg or "http 403" in msg:
+                    self._disabled.add(p.name)  # bad key -> skip all models of this provider
+                elif "http 404" in msg or "decommission" in msg or "does not exist" in msg or "not found" in msg:
+                    self._disabled.add(pkey)  # retired model -> skip just this one
         raise LLMError("All LLM providers failed: " + " | ".join(errors))
 
     def structured(

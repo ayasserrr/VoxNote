@@ -1,4 +1,5 @@
 import type {
+  AiTestResult,
   AskResponse,
   Collection,
   CollectionSummary,
@@ -98,6 +99,7 @@ export const api = {
     request<SearchHit[]>(`/search?q=${encodeURIComponent(q)}${collection_id ? `&collection_id=${collection_id}` : ""}`),
 
   status: () => request<SystemStatus>("/system/status"),
+  testAi: () => request<{ results: AiTestResult[]; working: number }>("/system/test-ai", { method: "POST" }),
   dashboard: () => request<Dashboard>("/dashboard"),
 
   // documentation & learning hub

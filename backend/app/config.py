@@ -58,40 +58,54 @@ class Settings(BaseSettings):
     retry_base_delay: float = 5.0
 
     # ------------------------------------------------------------------ LLM
-    # Ordered, comma separated list of providers to try. The first provider
-    # with an API key is used; on failure (rate limit, outage) the next one
-    # is tried. Supported: groq, gemini, openrouter, ollama, openai_compat, mock
-    llm_providers: str = "groq,gemini,openrouter,ollama"
+    # Ordered, comma separated list of FREE providers. Providers without a key
+    # are skipped; when one is rate limited / out of quota / down, the next one
+    # is used. Supported: groq, gemini, cerebras, mistral, openrouter, ollama,
+    # openai_compat, mock
+    llm_providers: str = "groq,gemini,cerebras,mistral,openrouter,ollama"
     llm_temperature: float = 0.2
-    llm_max_output_tokens: int = 4096
+    llm_max_output_tokens: int = 8192  # reasoning models need room to "think"
     llm_timeout: float = 180.0
     llm_max_retries: int = 4
     llm_min_interval: float = 0.0  # seconds between LLM calls (free-tier friendly)
+    llm_models_per_provider: int = 3  # rotate between N free models per provider (separate quotas)
+    llm_reasoning_effort: str = "low"  # for reasoning models (gpt-oss, Gemini 3): low | medium | high | none
 
+    # Model settings: "auto" = discover the currently available FREE models from
+    # the provider's live /models list (survives model retirements), or give an
+    # explicit comma-separated list, e.g. GROQ_MODEL=openai/gpt-oss-120b,qwen/qwen3-32b
     groq_api_key: str | None = None
     groq_base_url: str = "https://api.groq.com/openai/v1"
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "auto"
 
     gemini_api_key: str | None = None
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "auto"
+
+    cerebras_api_key: str | None = None
+    cerebras_base_url: str = "https://api.cerebras.ai/v1"
+    cerebras_model: str = "auto"
+
+    mistral_api_key: str | None = None
+    mistral_base_url: str = "https://api.mistral.ai/v1"
+    mistral_model: str = "auto"
 
     openrouter_api_key: str | None = None
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_model: str = "openrouter/free"
 
     ollama_base_url: str = "http://localhost:11434/v1"
-    ollama_model: str = "qwen2.5:7b"
+    ollama_model: str = "auto"
     ollama_enabled: bool = False
 
-    # Any other OpenAI-compatible endpoint (LM Studio, vLLM, Together, ...)
+    # Any other OpenAI-compatible endpoint (LM Studio, vLLM, llama.cpp, ...)
     openai_compat_api_key: str | None = None
     openai_compat_base_url: str | None = None
     openai_compat_model: str | None = None
 
     # ------------------------------------------------------- speech-to-text
     stt_provider: str = "groq"  # groq | local | none
-    groq_stt_model: str = "whisper-large-v3"
+    groq_stt_model: str = "whisper-large-v3"  # falls back to whisper-large-v3-turbo automatically
     local_whisper_model: str = "small"
     allow_audio_download: bool = True
     audio_chunk_seconds: int = 600

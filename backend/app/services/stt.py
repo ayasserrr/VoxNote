@@ -79,13 +79,33 @@ def split_audio(path: Path, workdir: Path, chunk_seconds: int) -> list[tuple[Pat
     return [(c, i * float(chunk_seconds)) for i, c in enumerate(chunks)]
 
 
+_STT_FALLBACK_MODELS = ("whisper-large-v3", "whisper-large-v3-turbo")
+
+
 def _groq_transcribe_file(path: Path) -> dict[str, Any]:
+    """Free Whisper on Groq; if the configured model is retired, try the other free Whisper models."""
+    models = list(dict.fromkeys([settings.groq_stt_model, *_STT_FALLBACK_MODELS]))
+    last: STTError | None = None
+    for model in models:
+        try:
+            return _groq_transcribe_with(path, model)
+        except STTError as exc:
+            msg = str(exc).lower()
+            if "404" in msg or "decommission" in msg or "does not exist" in msg or "model" in msg and "400" in msg:
+                log.warning("Groq STT model %s unavailable, trying the next free model", model)
+                last = exc
+                continue
+            raise
+    raise last or STTError("no Groq speech-to-text model available")
+
+
+def _groq_transcribe_with(path: Path, model: str) -> dict[str, Any]:
     url = f"{settings.groq_base_url.rstrip('/')}/audio/transcriptions"
     headers = {"Authorization": f"Bearer {settings.groq_api_key}"}
     for attempt in range(1, 6):
         with path.open("rb") as fh:
             files = {"file": (path.name, fh, "audio/mpeg")}
-            data = {"model": settings.groq_stt_model, "response_format": "verbose_json", "temperature": "0"}
+            data = {"model": model, "response_format": "verbose_json", "temperature": "0"}
             try:
                 resp = httpx.post(url, headers=headers, files=files, data=data, timeout=600)
             except httpx.HTTPError as exc:

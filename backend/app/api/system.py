@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
@@ -8,9 +9,12 @@ from sqlalchemy import text
 from app import __version__
 from app.config import settings
 from app.db import engine
+from app.deps import get_current_user
+from app.models import User
 from app.schemas.api import SystemStatus
 from app.services import stt
-from app.services.llm import provider_status
+from app.services.free_models import clear_cache
+from app.services.llm import provider_status, test_providers
 
 router = APIRouter(tags=["system"])
 
@@ -38,6 +42,14 @@ def system_status() -> SystemStatus:
         ffmpeg_available=stt.ffmpeg_available(),
         storage_backend=settings.storage_backend,
     )
+
+
+@router.post("/system/test-ai")
+async def test_ai(_: User = Depends(get_current_user)) -> dict:
+    """Re-discover the free models and send a tiny test prompt to each one."""
+    clear_cache()
+    results = await run_in_threadpool(test_providers)
+    return {"results": results, "working": sum(1 for r in results if r["ok"])}
 
 
 metrics_router = APIRouter(tags=["system"])

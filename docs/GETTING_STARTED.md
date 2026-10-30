@@ -49,11 +49,25 @@ cd VoxNote
 
 ## 3. Get a free AI key
 
-VoxNote uses free AI models. You need **at least one** of these keys; **two is better** because VoxNote automatically
-switches to the second one when the first hits its free-tier limit.
+VoxNote uses **only free AI models**. You don't need a paid key or a credit card. You need **at least one** free key;
+**two is better**, because VoxNote automatically switches to the other one when a free tier reaches its limit.
 
-| Provider | Why | Get the key |
+| Provider | Why | Get the key (free) |
 |---|---|---|
+| **Groq** (recommended) | No credit card. Very fast. The same key also gives free speech-to-text (Whisper) for videos without captions. | https://console.groq.com/keys → sign in → *Create API Key* (starts with `gsk_`) |
+| **Google Gemini** | No credit card. Excellent Arabic. (Not offered in the EU/UK/CH.) | https://aistudio.google.com/apikey → *Create API key* (starts with `AIza`) |
+| Cerebras | No card, very fast | https://cloud.cerebras.ai |
+| Mistral | Free "Experiment" plan (asks for a phone number, no card) | https://console.mistral.ai/api-keys |
+| OpenRouter | `:free` models (about 50 requests/day) | https://openrouter.ai/keys |
+| Ollama | Runs 100% on your computer, unlimited, no account | https://ollama.com/download, then `ollama pull qwen2.5:7b` |
+
+You do **not** need to choose model names. VoxNote finds the current free models of each provider automatically. Free models
+get retired every few months, and VoxNote switches to the replacement by itself.
+
+No key yet? You can still try the app with the built-in **offline demo model** (`LLM_PROVIDERS=mock`, see below).
+Its output is low quality on purpose. It is only there so you can explore.
+
+---|---|---|
 | **Groq** (recommended) | Very fast, free tier, **and** the same key gives free speech-to-text (Whisper) for videos without captions | https://console.groq.com/keys → *Create API Key* (starts with `gsk_`) |
 | **Google Gemini** | Free tier, large context, excellent Arabic | https://aistudio.google.com/apikey → *Create API key* (starts with `AIza`) |
 | OpenRouter | Many `:free` models, good fallback | https://openrouter.ai/keys |
@@ -75,9 +89,11 @@ Open `.env` in any editor and paste your key(s):
 
 ```ini
 GROQ_API_KEY=gsk_your_key_here
-GEMINI_API_KEY=AIza_your_key_here      # optional second provider
+GEMINI_API_KEY=AIza_your_key_here      # optional second free provider
 LLM_MIN_INTERVAL=2                     # gentle on free-tier rate limits
 ```
+
+Leave all the `*_MODEL=auto` lines as they are. VoxNote then picks the current free models automatically.
 
 Optional:
 
@@ -187,7 +203,13 @@ On first start the database (a single SQLite file) is created automatically. You
 Then:
 
 1. Open http://localhost:5173 and click **Create one** to register. The account is stored only on your computer.
-2. Go to **Settings** and check that your AI provider shows **active**. If it shows "no key", fix `.env` and restart the API.
+2. Go to **Settings** and click **Test my AI keys**. Each free model should show a green ✓.
+   - If a provider shows "no key", fix `.env` (in the project root) and restart the API.
+   - You can run the same check in a terminal:
+     ```bash
+     cd backend
+     .venv/bin/python -m app.check_ai        # Windows: .venv\Scripts\python -m app.check_ai
+     ```
 
 ---
 

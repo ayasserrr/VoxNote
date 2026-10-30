@@ -223,23 +223,22 @@ recovered automatically after a restart. Use [Docker](#running-with-docker-produ
 
 ## Free AI providers — how to get keys
 
-VoxNote is designed to run **entirely on free models**. It tries the providers in `LLM_PROVIDERS` in order and skips any provider without a key.
+**VoxNote only uses free AI. No paid API keys, no credit card.** Get one free key (two is better):
 
-| Provider | What you get for free | Default model | Get a key |
+| Provider | Free terms | Get a key | `.env` |
 |---|---|---|---|
-| **Groq** ⭐ | Rate-limited free tier, very fast inference, **free Whisper large-v3 speech-to-text** | `llama-3.3-70b-versatile` | https://console.groq.com/keys |
-| **Google Gemini** | Free tier for Flash models, large context window, strong Arabic | `gemini-2.5-flash` | https://aistudio.google.com/apikey |
-| **OpenRouter** | Many `:free` models; `openrouter/free` routes to one automatically | `openrouter/free` | https://openrouter.ai/keys |
-| **Ollama** | Unlimited, runs locally and offline | `qwen2.5:7b` | https://ollama.com/download |
-| Any OpenAI-compatible server | LM Studio, vLLM, … | configurable | — |
+| **Groq** ⭐ | free tier, no card, very fast, **plus free Whisper speech-to-text** | https://console.groq.com/keys | `GROQ_API_KEY` |
+| **Google Gemini** | free tier, no card, great Arabic (not in EU/UK/CH) | https://aistudio.google.com/apikey | `GEMINI_API_KEY` |
+| **Cerebras** | free tier, no card, extremely fast | https://cloud.cerebras.ai | `CEREBRAS_API_KEY` |
+| **Mistral** | free "Experiment" plan (phone verification) | https://console.mistral.ai/api-keys | `MISTRAL_API_KEY` |
+| **OpenRouter** | `:free` models, about 50 requests/day | https://openrouter.ai/keys | `OPENROUTER_API_KEY` |
+| **Ollama** | runs on your computer: unlimited and offline | https://ollama.com/download | `OLLAMA_ENABLED=true` |
 
-**Recommended setup:** `GROQ_API_KEY` (LLM + speech-to-text) plus `GEMINI_API_KEY` as a fallback.
-Free tiers have per-minute and per-day limits, so VoxNote retries on HTTP 429 (honouring `Retry-After`), throttles requests
-(`LLM_MIN_INTERVAL`) and falls back to the next provider.
-See [docs/FREE_AI_PROVIDERS.md](docs/FREE_AI_PROVIDERS.md) for limits, model choices and tips for Arabic.
-
-Model names change over time. Every model is configurable in `.env` (`GROQ_MODEL`, `GEMINI_MODEL`, `OPENROUTER_MODEL`, `OLLAMA_MODEL`).
-The **Settings** page in the app shows which providers are active.
+**Model names are discovered automatically.** Free models get retired often: Groq retired `llama-3.3-70b-versatile` in Aug 2026,
+and Gemini 2.5 was retired in Oct 2026. So VoxNote reads each provider's live model list and picks the best free chat models.
+It rotates between several of them, because free quotas are usually per model. If a model is retired or rate-limited, the next one is used.
+To check your setup, click **Settings → Test my AI keys**, or run `python -m app.check_ai` in `backend/`.
+Details: [docs/FREE_AI_PROVIDERS.md](docs/FREE_AI_PROVIDERS.md).
 
 ---
 
@@ -366,9 +365,10 @@ All settings are environment variables, documented inline in [`.env.example`](.e
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LLM_PROVIDERS` | `groq,gemini,openrouter,ollama` | Provider order / fallback chain (`mock` for offline) |
-| `GROQ_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY` | – | Free API keys |
-| `*_MODEL` | see `.env.example` | Model for each provider |
+| `LLM_PROVIDERS` | `groq,gemini,cerebras,mistral,openrouter,ollama` | Free provider order / fallback chain (`mock` for offline) |
+| `GROQ_API_KEY`, `GEMINI_API_KEY`, `CEREBRAS_API_KEY`, `MISTRAL_API_KEY`, `OPENROUTER_API_KEY` | – | Free API keys (any subset) |
+| `*_MODEL` | `auto` | Automatic free-model discovery, or a comma-separated list to pin models |
+| `LLM_MODELS_PER_PROVIDER` | `3` | Free models rotated per provider |
 | `LLM_MIN_INTERVAL` | `0` | Seconds between LLM calls (2–4 recommended on free tiers) |
 | `STT_PROVIDER` | `groq` | `groq` (free Whisper), `local` (faster-whisper) or `none` |
 | `ALLOW_AUDIO_DOWNLOAD` | `true` | Transcribe audio when a video has no captions |
@@ -407,7 +407,7 @@ To use Ollama on your host machine from Docker, set `OLLAMA_ENABLED=true`. The c
 ```bash
 make test                     # backend tests + frontend type-check
 # or
-cd backend && pytest -q       # 43 tests, fully offline (mock LLM, stubbed YouTube, fake docs site)
+cd backend && pytest -q       # 53 tests, fully offline (mock LLM, stubbed YouTube, fake docs site)
 cd frontend && npm run build
 ```
 
@@ -428,6 +428,7 @@ invalid timestamps, failed chunks, LLM calls and tokens, and processing time per
 
 | Symptom | Fix |
 |---|---|
+| A free model was retired | Nothing to do: with `*_MODEL=auto` VoxNote picks the replacement automatically (*Settings → Test my AI keys* shows the current models). |
 | "No LLM provider configured" | Add `GROQ_API_KEY` or `GEMINI_API_KEY` to `.env` and **restart** the backend. Check the Settings page. |
 | `No transcript available ... RequestBlocked / IpBlocked` | YouTube blocks many cloud and VPN IPs. Run locally, set `YOUTUBE_PROXY_URL`, or upload the audio file. |
 | Video has no captions | Set `GROQ_API_KEY` (free Whisper) and install `ffmpeg`, or use `STT_PROVIDER=local` with `pip install faster-whisper`. |

@@ -198,7 +198,18 @@ export interface SystemStatus {
   app: string;
   version: string;
   task_backend: string;
-  llm_providers: { name: string; model: string; configured: boolean; in_chain: boolean }[];
+  llm_providers: {
+    name: string;
+    label: string;
+    model: string;
+    models: string[];
+    selection: string;
+    configured: boolean;
+    in_chain: boolean;
+    free: boolean;
+    signup_url: string;
+    note: string;
+  }[];
   stt_provider: string;
   stt_available: boolean;
   ffmpeg_available: boolean;
@@ -389,4 +400,13 @@ export interface ReviewAnswer {
   box: number;
   mastered: boolean;
   next_due_at: string;
+}
+
+export interface AiTestResult {
+  provider: string;
+  model: string;
+  ok: boolean;
+  reply?: string;
+  error?: string;
+  seconds: number;
 }
