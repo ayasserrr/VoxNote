@@ -39,6 +39,7 @@ class CollectionKind(str, enum.Enum):
     video = "video"
     playlist = "playlist"
     upload = "upload"
+    docs = "docs"
 
 
 class Status(str, enum.Enum):
@@ -61,6 +62,8 @@ class Stage(str, enum.Enum):
     verifying = "verifying"
     rendering = "rendering"
     synthesizing = "synthesizing"
+    crawling = "crawling"
+    structuring = "structuring"
     done = "done"
 
 
@@ -96,6 +99,8 @@ class Collection(Base):
     error: Mapped[str | None] = mapped_column(Text)
     settings: Mapped[dict] = mapped_column(JSON, default=dict)
     synthesis: Mapped[dict | None] = mapped_column(JSON)  # cross-video knowledge
+    progress: Mapped[float] = mapped_column(Float, default=0.0)  # used by docs crawling
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)  # crawl stats, warnings
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -105,6 +110,12 @@ class Collection(Base):
     )
     documents: Mapped[list[Document]] = relationship(
         back_populates="collection", cascade="all, delete-orphan"
+    )
+    pages: Mapped[list[DocPage]] = relationship(
+        back_populates="collection", cascade="all, delete-orphan", order_by="DocPage.position"
+    )
+    course: Mapped[Course | None] = relationship(
+        back_populates="collection", cascade="all, delete-orphan", uselist=False
     )
 
 
@@ -244,3 +255,90 @@ class ProcessingLog(Base):
     stage: Mapped[str | None] = mapped_column(String(16))
     message: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DocPage(Base):
+    """One crawled documentation page (cleaned main content as Markdown-like text)."""
+
+    __tablename__ = "doc_pages"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    collection_id: Mapped[str] = mapped_column(ForeignKey("collections.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    url: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(String(500), default="Untitled page")
+    headings: Mapped[list] = mapped_column(JSON, default=list)
+    content: Mapped[str] = mapped_column(Text, default="")
+    word_count: Mapped[int] = mapped_column(Integer, default=0)
+    language: Mapped[str | None] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    collection: Mapped[Collection] = relationship(back_populates="pages")
+
+
+class Course(Base):
+    """An interactive learning path generated from a collection (docs, video or playlist)."""
+
+    __tablename__ = "courses"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    collection_id: Mapped[str] = mapped_column(
+        ForeignKey("collections.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(500), default="Course")
+    description: Mapped[str] = mapped_column(Text, default="")
+    level: Mapped[str] = mapped_column(String(16), default="beginner")  # beginner|intermediate|advanced
+    language: Mapped[str] = mapped_column(String(16), default="auto")
+    status: Mapped[str] = mapped_column(String(16), default=Status.queued.value)  # queued|processing|completed|failed
+    error: Mapped[str | None] = mapped_column(Text)
+    outcomes: Mapped[list] = mapped_column(JSON, default=list)  # what the learner will be able to do
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    last_opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    collection: Mapped[Collection] = relationship(back_populates="course")
+    lessons: Mapped[list[Lesson]] = relationship(
+        back_populates="course", cascade="all, delete-orphan", order_by="Lesson.position"
+    )
+
+
+class Lesson(Base):
+    __tablename__ = "lessons"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    course_id: Mapped[str] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)  # global order in the course
+    module_index: Mapped[int] = mapped_column(Integer, default=0)
+    module_title: Mapped[str] = mapped_column(String(500), default="")
+    title: Mapped[str] = mapped_column(String(500))
+    objectives: Mapped[list] = mapped_column(JSON, default=list)
+    estimated_minutes: Mapped[int] = mapped_column(Integer, default=10)
+    source_refs: Mapped[list] = mapped_column(JSON, default=list)  # pages / video ranges
+    status: Mapped[str] = mapped_column(String(16), default="locked")  # locked|available|completed
+    content: Mapped[dict | None] = mapped_column(JSON)  # explanation, key points, example...
+    quiz: Mapped[list | None] = mapped_column(JSON)  # questions WITH answers (never sent before submit)
+    simplicity: Mapped[int] = mapped_column(Integer, default=0)  # 0 normal, 1+ "explain simpler"
+    generating_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # lock for generation
+    best_score: Mapped[float | None] = mapped_column(Float)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    course: Mapped[Course] = relationship(back_populates="lessons")
+    quiz_attempts: Mapped[list[QuizAttempt]] = relationship(
+        back_populates="lesson", cascade="all, delete-orphan", order_by="QuizAttempt.created_at"
+    )
+
+
+class QuizAttempt(Base):
+    __tablename__ = "quiz_attempts"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    lesson_id: Mapped[str] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"), index=True)
+    answers: Mapped[dict] = mapped_column(JSON, default=dict)
+    results: Mapped[list] = mapped_column(JSON, default=list)
+    score: Mapped[float] = mapped_column(Float, default=0.0)
+    passed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    lesson: Mapped[Lesson] = relationship(back_populates="quiz_attempts")

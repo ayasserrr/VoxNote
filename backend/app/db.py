@@ -65,6 +65,22 @@ def session_scope() -> Iterator[Session]:
 
 
 def init_db() -> None:
+    """Bring the schema up to date with Alembic migrations.
+
+    Databases created by VoxNote 1.0 with `create_all` (no `alembic_version`
+    table) are stamped at the initial revision first, so upgrading an existing
+    local installation keeps all data.
+    """
+    from sqlalchemy import inspect
+
+    from alembic import command
+    from alembic.config import Config
     from app import models  # noqa: F401  (register models)
 
-    Base.metadata.create_all(bind=engine)
+    backend_dir = Path(__file__).resolve().parent.parent
+    cfg = Config(str(backend_dir / "alembic.ini"))
+    cfg.set_main_option("script_location", str(backend_dir / "alembic"))
+    tables = set(inspect(engine).get_table_names())
+    if "users" in tables and "alembic_version" not in tables:
+        command.stamp(cfg, "0001")
+    command.upgrade(cfg, "head")

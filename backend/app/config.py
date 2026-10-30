@@ -107,6 +107,12 @@ class Settings(BaseSettings):
     chunk_overlap_segments: int = 2
     max_upload_mb: int = 500
 
+    # ------------------------------------------------------- learning hub
+    quiz_pass_score: float = 0.7  # share of quiz points needed to complete a lesson
+    crawl_delay: float = 0.3  # seconds between documentation page requests
+    crawl_max_pages: int = 300
+    prefetch_next_lesson: bool = True
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

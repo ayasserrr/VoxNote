@@ -2,7 +2,15 @@ import type {
   AskResponse,
   Collection,
   CollectionSummary,
+  Course,
+  CourseSummary,
+  Dashboard,
+  LangChoice,
+  Lesson,
+  Level,
   LogEntry,
+  PageDetail,
+  SubmitResult,
   ProcessingSettings,
   SearchHit,
   SystemStatus,
@@ -88,7 +96,36 @@ export const api = {
     request<SearchHit[]>(`/search?q=${encodeURIComponent(q)}${collection_id ? `&collection_id=${collection_id}` : ""}`),
 
   status: () => request<SystemStatus>("/system/status"),
+  dashboard: () => request<Dashboard>("/dashboard"),
+
+  // documentation & learning hub
+  createDocs: (body: { url: string; max_pages: number; same_path_only: boolean; level: Level; language: LangChoice }) =>
+    request<Collection>("/collections/docs", { method: "POST", body: JSON.stringify(body) }),
+  recrawl: (id: string) => request<Collection>(`/collections/${id}/recrawl`, { method: "POST" }),
+  page: (collectionId: string, pageId: string) => request<PageDetail>(`/collections/${collectionId}/pages/${pageId}`),
+  createCourse: (collectionId: string, level: Level, language: LangChoice) =>
+    request<Course>(`/collections/${collectionId}/course`, { method: "POST", body: JSON.stringify({ level, language }) }),
+  courses: () => request<CourseSummary[]>("/courses"),
+  course: (id: string) => request<Course>(`/courses/${id}`),
+  deleteCourse: (id: string) => request<void>(`/courses/${id}`, { method: "DELETE" }),
+  resetCourse: (id: string) => request<Course>(`/courses/${id}/reset`, { method: "POST" }),
+  lesson: (id: string) => request<Lesson>(`/lessons/${id}`),
+  prepareLesson: (id: string) => request<Lesson>(`/lessons/${id}/prepare`, { method: "POST" }),
+  simplifyLesson: (id: string) => request<Lesson>(`/lessons/${id}/simplify`, { method: "POST" }),
+  regenerateLesson: (id: string) => request<Lesson>(`/lessons/${id}/regenerate`, { method: "POST" }),
+  newQuiz: (id: string) => request<Lesson>(`/lessons/${id}/new-quiz`, { method: "POST" }),
+  submitQuiz: (id: string, answers: Record<string, unknown>) =>
+    request<SubmitResult>(`/lessons/${id}/submit`, { method: "POST", body: JSON.stringify({ answers }) }),
+  tutor: (id: string, question: string) =>
+    request<{ answer: string; provider: string | null; model: string | null }>(`/lessons/${id}/tutor`, {
+      method: "POST",
+      body: JSON.stringify({ question }),
+    }),
 };
+
+export function isYouTubeUrl(url: string): boolean {
+  return /(^|\/\/)(www\.|m\.|music\.)?(youtube\.com|youtu\.be|youtube-nocookie\.com)\//i.test(url.trim()) || /^[\w-]{11}$/.test(url.trim());
+}
 
 /** Direct link for downloads/viewing (token passed as query param). */
 export function documentUrl(documentId: string, inline = false): string {

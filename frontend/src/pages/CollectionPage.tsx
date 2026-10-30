@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, BookText, ExternalLink, FileText, GraduationCap, RefreshCw } from "lucide-react";
 import { api } from "../api";
 import AskPanel from "../components/AskPanel";
 import DocumentButtons from "../components/DocumentButtons";
 import { Questions } from "../components/KnowledgeView";
 import SettingsForm from "../components/SettingsForm";
 import { ProgressBar, StatusBadge } from "../components/StatusBadge";
-import type { Collection, LogEntry, ProcessingSettings } from "../types";
-import { fmtTime, isActive, LANG_LABEL, STAGE_LABEL } from "../utils";
+import { useToast } from "../components/Toast";
+import { Spinner } from "../components/ui";
+import type { Collection, LangChoice, Level, LogEntry, ProcessingSettings } from "../types";
+import { fmtTime, hostOf, isActive, LANG_LABEL, STAGE_LABEL } from "../utils";
 
-type Tab = "videos" | "course" | "ask" | "logs";
+type Tab = "videos" | "pages" | "course" | "ask" | "logs";
 
 export default function CollectionPage() {
   const { id } = useParams();
@@ -19,6 +22,11 @@ export default function CollectionPage() {
   const [tab, setTab] = useState<Tab>("videos");
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [regen, setRegen] = useState<ProcessingSettings | null>(null);
+  const [learnOpen, setLearnOpen] = useState(false);
+  const [level, setLevel] = useState<Level>("beginner");
+  const [lang, setLang] = useState<LangChoice>("auto");
+  const [creating, setCreating] = useState(false);
+  const toast = useToast();
 
   const load = useCallback(async () => {
     try {
@@ -28,7 +36,27 @@ export default function CollectionPage() {
     }
   }, [id]);
 
-  const running = col ? isActive(col.status) || col.videos.some((v) => isActive(v.status)) || col.stage === "synthesizing" || col.stage === "rendering" : false;
+  const running = col
+    ? isActive(col.status) || col.videos.some((v) => isActive(v.status)) || ["synthesizing", "rendering", "crawling", "structuring"].includes(col.stage)
+    : false;
+
+  useEffect(() => {
+    if (col?.kind === "docs" && tab === "videos") setTab("pages");
+  }, [col?.kind, tab]);
+
+  const startCourse = async () => {
+    if (!col) return;
+    setCreating(true);
+    try {
+      const c = await api.createCourse(col.id, level, lang);
+      toast("Your course is being designed…", "success");
+      nav(`/learn/${c.id}`);
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   useEffect(() => {
     load();
@@ -45,7 +73,8 @@ export default function CollectionPage() {
   }, [tab, id, col?.updated_at]);
 
   if (error) return <div className="alert error">{error}</div>;
-  if (!col) return <div className="spinner" />;
+  if (!col) return <Spinner />;
+  if (col.kind === "docs") return <DocsCollection col={col} running={running} tab={tab} setTab={setTab} logs={logs} reload={load} />;
 
   const bookDocs = col.documents.filter((d) => d.kind === "collection");
   const docsFor = (vid: string) => col.documents.filter((d) => d.video_id === vid);
@@ -61,6 +90,7 @@ export default function CollectionPage() {
 
   return (
     <div>
+      <Link to="/library" className="back"><ArrowLeft size={14} /> Library</Link>
       <div className="collection-header card">
         {col.thumbnail_url && <img className="cover" src={col.thumbnail_url} alt="" />}
         <div className="grow">
@@ -100,6 +130,13 @@ export default function CollectionPage() {
             )}
           </div>
           <div className="row">
+            {col.course_id ? (
+              <Link className="btn primary sm" to={`/learn/${col.course_id}`}><GraduationCap size={14} /> Open course</Link>
+            ) : (
+              col.videos.some((v) => v.status === "completed") && (
+                <button className="btn primary sm" onClick={() => setLearnOpen(!learnOpen)}><GraduationCap size={14} /> Learn this as a course</button>
+              )
+            )}
             {failed > 0 && !running && (
               <button className="btn sm" onClick={async () => setCol(await api.retryFailed(col.id))}>
                 ↻ Retry {failed} failed
@@ -112,6 +149,24 @@ export default function CollectionPage() {
             )}
             <button className="btn ghost sm danger" onClick={doDelete}>Delete</button>
           </div>
+          {learnOpen && (
+            <div className="regen">
+              <p className="small muted">VoxNote will design a step-by-step course from these videos: short lessons explained simply, each with a quiz that is corrected for you.</p>
+              <div className="settings-grid">
+                <label className="field"><span>Your level</span>
+                  <select value={level} onChange={(e) => setLevel(e.target.value as Level)}>
+                    <option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option>
+                  </select>
+                </label>
+                <label className="field"><span>Teaching language</span>
+                  <select value={lang} onChange={(e) => setLang(e.target.value as LangChoice)}>
+                    <option value="auto">Same as the videos</option><option value="en">English</option><option value="ar">Arabic</option><option value="bilingual">Arabic + English terms</option>
+                  </select>
+                </label>
+              </div>
+              <button className="btn primary sm" disabled={creating} onClick={startCourse}>{creating ? "Creating…" : "Create my course"}</button>
+            </div>
+          )}
           {regen && (
             <div className="regen">
               <SettingsForm value={regen} onChange={setRegen} showPlaylistOptions={col.kind === "playlist"} />
@@ -259,6 +314,102 @@ export default function CollectionPage() {
               <span className="muted small nowrap">{new Date(l.created_at).toLocaleTimeString()}</span>
               {l.stage && <span className="tag">{l.stage}</span>}
               {l.video_id && <span className="muted small">#{(col.videos.find((v) => v.id === l.video_id)?.position ?? 0) + 1}</span>}
+              <span>{l.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* ------------------------------------------------------------ docs view */
+function DocsCollection({ col, running, tab, setTab, logs, reload }: {
+  col: Collection;
+  running: boolean;
+  tab: Tab;
+  setTab: (t: Tab) => void;
+  logs: LogEntry[];
+  reload: () => void;
+}) {
+  const nav = useNavigate();
+  const toast = useToast();
+  const words = col.meta?.words ?? col.pages.reduce((s, p) => s + p.word_count, 0);
+  return (
+    <div>
+      <Link to="/library" className="back"><ArrowLeft size={14} /> Library</Link>
+      <div className="collection-header card">
+        <div className="docs-icon"><BookText size={36} /></div>
+        <div className="grow">
+          <div className="row">
+            <span className="tag">Documentation</span>
+            <StatusBadge status={col.status} stage={col.stage} />
+          </div>
+          <h1 dir="auto">{col.title}</h1>
+          <div className="muted">
+            {col.source_url && <a href={col.source_url} target="_blank" rel="noreferrer">{hostOf(col.source_url)} <ExternalLink size={12} /></a>}
+            {col.pages.length > 0 && <> · {col.pages.length} pages · {words.toLocaleString()} words · ~{Math.max(1, Math.round(words / 230))} min read</>}
+          </div>
+          {running && (
+            <div className="overall">
+              <ProgressBar value={col.progress} />
+              <span className="muted small">
+                {col.stage === "crawling" ? `Reading pages… ${col.meta?.pages_found ?? 0} found` : col.stage === "structuring" ? "Designing your course…" : "Waiting…"}
+              </span>
+            </div>
+          )}
+          {col.stage === "crawling" && col.meta?.current_url && <div className="muted small ellipsis">{col.meta.current_url}</div>}
+          {col.error && <div className="alert error">{col.error}</div>}
+          {(col.meta?.warnings ?? []).map((w, i) => <div key={i} className="alert warn">{w}</div>)}
+          <div className="row">
+            {col.course_id && !running && (
+              <button className="btn primary" onClick={() => nav(`/learn/${col.course_id}`)}><GraduationCap size={16} /> Open my course</button>
+            )}
+            {!running && (
+              <button className="btn ghost sm" onClick={async () => {
+                try { await api.recrawl(col.id); toast("Re-reading the documentation…", "info"); reload(); } catch (e) { toast((e as Error).message, "error"); }
+              }}><RefreshCw size={14} /> Re-crawl</button>
+            )}
+            <button className="btn ghost sm danger" onClick={async () => {
+              if (!confirm("Delete this documentation and its course?")) return;
+              await api.deleteCollection(col.id);
+              nav("/library");
+            }}>Delete</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="tabs big">
+        <button className={tab === "pages" ? "active" : ""} onClick={() => setTab("pages")}>Pages ({col.pages.length})</button>
+        <button className={tab === "ask" ? "active" : ""} onClick={() => setTab("ask")}>Ask the docs</button>
+        <button className={tab === "logs" ? "active" : ""} onClick={() => setTab("logs")}>Processing log</button>
+      </div>
+
+      {tab === "pages" && (
+        <div className="card list-card">
+          {col.pages.length === 0 && <p className="muted">{running ? "Pages will appear here as they are read…" : "No pages."}</p>}
+          {col.pages.map((p) => (
+            <Link key={p.id} to={`/collections/${col.id}/pages/${p.id}`} className="list-row">
+              <span className="pos">{p.position + 1}</span>
+              <FileText size={16} />
+              <div className="grow">
+                <strong dir="auto">{p.title}</strong>
+                <div className="muted small ellipsis">{p.headings.slice(1, 6).join(" · ") || p.url}</div>
+              </div>
+              <span className="muted small nowrap">{p.word_count.toLocaleString()} words</span>
+            </Link>
+          ))}
+        </div>
+      )}
+      {tab === "ask" && <div className="card"><AskPanel collectionId={col.id} placeholder="e.g. How do I install it? What does this option do?" /></div>}
+      {tab === "logs" && (
+        <div className="card logs">
+          {logs.length === 0 && <p className="muted">No log entries yet.</p>}
+          {logs.map((l) => (
+            <div key={l.id} className={`log log-${l.level}`}>
+              <span className="muted small nowrap">{new Date(l.created_at).toLocaleTimeString()}</span>
+              {l.stage && <span className="tag">{l.stage}</span>}
               <span>{l.message}</span>
             </div>
           ))}

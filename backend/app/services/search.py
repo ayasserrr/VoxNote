@@ -18,7 +18,7 @@ from rank_bm25 import BM25Okapi
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import Collection, Transcript, Video
+from app.models import Collection, DocPage, Transcript, Video
 from app.services.chunking import fmt_ts
 from app.services.llm import LLMClient
 from app.services.prompts import ANSWER_SYSTEM
@@ -51,13 +51,35 @@ def tokenize(text: str) -> list[str]:
 
 @dataclass
 class Passage:
-    video_id: str
+    video_id: str  # video id, or page id for documentation pages
     collection_id: str
     video_title: str
     youtube_id: str | None
     start: float
     end: float
     text: str
+    kind: str = "video"
+    url: str | None = None
+
+
+def page_passages(pages: list[DocPage], max_chars: int = 1400) -> list[Passage]:
+    """Split documentation pages into heading-aware passages."""
+    out: list[Passage] = []
+    for p in pages:
+        sections = re.split(r"\n(?=#{1,3} )", p.content)
+        buf = ""
+        for sec in sections:
+            if buf and len(buf) + len(sec) > max_chars:
+                out.append(Passage(p.id, p.collection_id, p.title, None, 0, 0, buf.strip(), "page", p.url))
+                buf = ""
+            buf += "\n" + sec
+            while len(buf) > max_chars * 1.5:
+                out.append(Passage(p.id, p.collection_id, p.title, None, 0, 0, buf[:max_chars].strip(), "page",
+                                   p.url))
+                buf = buf[max_chars:]
+        if buf.strip():
+            out.append(Passage(p.id, p.collection_id, p.title, None, 0, 0, buf.strip(), "page", p.url))
+    return out
 
 
 def build_passages(videos: list[Video], window_seconds: float = 75.0) -> list[Passage]:
@@ -123,15 +145,25 @@ def _scope_videos(db: Session, user_id: str, collection_id: str | None, video_id
     return list(db.scalars(stmt))
 
 
+def _scope_pages(db: Session, user_id: str, collection_id: str | None) -> list[DocPage]:
+    stmt = (select(DocPage).join(Collection, Collection.id == DocPage.collection_id)
+            .where(Collection.user_id == user_id))
+    if collection_id:
+        stmt = stmt.where(DocPage.collection_id == collection_id)
+    return list(db.scalars(stmt))
+
+
 def get_index(db: Session, user_id: str, collection_id: str | None = None, video_id: str | None = None) -> _Index:
     videos = _scope_videos(db, user_id, collection_id, video_id)
+    pages = [] if video_id else _scope_pages(db, user_id, collection_id)
     version = "|".join(f"{v.id}:{v.updated_at.timestamp() if v.updated_at else 0}" for v in videos)
+    version += "|" + ",".join(p.id for p in pages)
     key = f"{user_id}:{collection_id}:{video_id}"
     with _cache_lock:
         hit = _cache.get(key)
         if hit and hit[0] == version:
             return hit[1]
-    idx = _Index(build_passages(videos))
+    idx = _Index(build_passages(videos) + page_passages(pages))
     with _cache_lock:
         _cache[key] = (version, idx)
     return idx
@@ -151,9 +183,11 @@ def answer(db: Session, user_id: str, question: str, k: int = 8, collection_id: 
         return ("I couldn't find anything related to that question in the processed videos. "
                 "Try different keywords or process more videos."), [], llm
     context = "\n\n".join(
-        f"[{i}] Video: {p.video_title} @ {fmt_ts(p.start)}\n{p.text[:1800]}" for i, p in enumerate(passages, 1)
+        (f"[{i}] Documentation page: {p.video_title}\n{p.text[:1800]}" if p.kind == "page" else
+         f"[{i}] Video: {p.video_title} @ {fmt_ts(p.start)}\n{p.text[:1800]}")
+        for i, p in enumerate(passages, 1)
     )
-    user = f"Question: {question}\n\nTranscript excerpts:\n\n{context}"
+    user = f"Question: {question}\n\nExcerpts:\n\n{context}"
     r = llm.complete([{"role": "system", "content": ANSWER_SYSTEM}, {"role": "user", "content": user}],
                      max_tokens=1500)
     return r.text.strip(), passages, llm

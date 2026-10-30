@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
-from app.api import ask, auth, collections, documents, system, videos
+from app.api import ask, auth, collections, documents, learning, system, videos
 from app.config import settings
 from app.db import init_db
 from app.logging_setup import setup_logging
@@ -69,7 +69,8 @@ async def request_context(request: Request, call_next):
     return response
 
 
-for r in (auth.router, collections.router, videos.router, documents.router, ask.router, system.router):
+for r in (auth.router, collections.router, videos.router, documents.router, ask.router, learning.router,
+          system.router):
     app.include_router(r, prefix=settings.api_prefix)
 app.include_router(system.metrics_router)
 

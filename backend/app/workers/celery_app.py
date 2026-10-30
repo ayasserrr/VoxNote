@@ -38,6 +38,27 @@ def synthesize_collection_task(collection_id: str) -> None:
     synthesize_collection(collection_id)
 
 
+@celery.task(name="voxnote.process_docs")
+def process_docs_task(collection_id: str) -> None:
+    from app.pipeline.docs import process_docs
+
+    process_docs(collection_id)
+
+
+@celery.task(name="voxnote.build_course")
+def build_course_task(course_id: str) -> None:
+    from app.services.learning import build_course
+
+    build_course(course_id)
+
+
+@celery.task(name="voxnote.generate_lesson")
+def generate_lesson_task(lesson_id: str) -> None:
+    from app.services.learning import prefetch_lesson
+
+    prefetch_lesson(lesson_id)
+
+
 # Ensure tables exist when a worker starts before the API.
 @celery.on_after_configure.connect
 def _init(sender, **kwargs):  # pragma: no cover

@@ -44,7 +44,7 @@ export interface Video {
 
 export interface CollectionSummary {
   id: string;
-  kind: "video" | "playlist" | "upload";
+  kind: "video" | "playlist" | "upload" | "docs";
   title: string;
   channel: string | null;
   thumbnail_url: string | null;
@@ -56,7 +56,9 @@ export interface CollectionSummary {
   video_count: number;
   completed_count: number;
   failed_count: number;
+  page_count: number;
   progress: number;
+  course_id: string | null;
 }
 
 export interface Collection extends CollectionSummary {
@@ -64,8 +66,24 @@ export interface Collection extends CollectionSummary {
   error: string | null;
   settings: ProcessingSettings;
   synthesis: CollectionSynthesis | null;
+  meta: { pages?: number; words?: number; visited?: number; skipped?: number; warnings?: string[]; pages_found?: number; current_url?: string };
   videos: Video[];
   documents: DocumentInfo[];
+  pages: PageInfo[];
+}
+
+export interface PageInfo {
+  id: string;
+  position: number;
+  url: string;
+  title: string;
+  headings: string[];
+  word_count: number;
+  language: string | null;
+}
+
+export interface PageDetail extends PageInfo {
+  content: string;
 }
 
 export interface TimeRef {
@@ -145,6 +163,7 @@ export interface Transcript {
 
 export interface SourceRef {
   ref: number;
+  kind: "video" | "page";
   video_id: string;
   video_title: string;
   youtube_id: string | null;
@@ -195,4 +214,143 @@ export interface UrlPreview {
   thumbnail_url: string | null;
   video_count: number | null;
   duration_seconds: number | null;
+}
+
+/* ------------------------------------------------------------ learning hub */
+export type Level = "beginner" | "intermediate" | "advanced";
+export type LangChoice = "auto" | "en" | "ar" | "bilingual";
+
+export interface CourseStats {
+  lesson_count: number;
+  completed_count: number;
+  progress: number;
+  average_score: number | null;
+  xp: number;
+  next_lesson_id: string | null;
+  next_lesson_title: string | null;
+  minutes_total: number;
+}
+
+export interface CourseSummary {
+  id: string;
+  collection_id: string;
+  collection_kind: string;
+  source_url: string | null;
+  thumbnail_url: string | null;
+  title: string;
+  description: string;
+  level: Level;
+  language: string;
+  status: Status;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  last_opened_at: string | null;
+  stats: CourseStats;
+}
+
+export type LessonStatus = "locked" | "available" | "completed";
+
+export interface LessonSummary {
+  id: string;
+  position: number;
+  module_index: number;
+  module_title: string;
+  title: string;
+  objectives: string[];
+  estimated_minutes: number;
+  status: LessonStatus;
+  best_score: number | null;
+  attempts: number;
+  has_content: boolean;
+}
+
+export interface Course extends CourseSummary {
+  outcomes: string[];
+  lessons: LessonSummary[];
+}
+
+export interface QuizQuestion {
+  id: string;
+  type: "mcq" | "true_false" | "short";
+  question: string;
+  options: string[];
+  difficulty: string;
+}
+
+export interface QuizResult {
+  id: string;
+  type: string;
+  question: string;
+  your_answer: string | number | boolean | null;
+  correct_answer: string;
+  explanation: string;
+  feedback: string;
+  score: number;
+  correct: boolean;
+}
+
+export interface Attempt {
+  id: string;
+  score: number;
+  passed: boolean;
+  results: QuizResult[];
+  created_at: string;
+}
+
+export interface LessonContent {
+  title: string;
+  summary: string;
+  explanation: string;
+  analogy: string;
+  key_points: string[];
+  example: { title: string; content: string } | null;
+  common_mistakes: string[];
+}
+
+export interface LessonSource {
+  kind: "page" | "video";
+  title: string;
+  url: string | null;
+  page_id: string | null;
+  video_id: string | null;
+  youtube_id: string | null;
+  start: number | null;
+  end: number | null;
+}
+
+export interface Lesson extends LessonSummary {
+  course_id: string;
+  course_title: string;
+  language: string;
+  content: LessonContent | null;
+  quiz: QuizQuestion[];
+  sources: LessonSource[];
+  generating: boolean;
+  simplicity: number;
+  prev_lesson_id: string | null;
+  next_lesson_id: string | null;
+  last_attempt: Attempt | null;
+  pass_score: number;
+}
+
+export interface SubmitResult {
+  attempt: Attempt;
+  lesson: LessonSummary;
+  next_lesson_id: string | null;
+  course_completed: boolean;
+}
+
+export interface Dashboard {
+  collections: number;
+  videos_processed: number;
+  pages_read: number;
+  documents: number;
+  courses: number;
+  lessons_completed: number;
+  quizzes_taken: number;
+  average_score: number | null;
+  xp: number;
+  continue_learning: CourseSummary[];
+  recent: CollectionSummary[];
 }

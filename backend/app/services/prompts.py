@@ -118,9 +118,10 @@ Return ONLY JSON:
  "final_questions": [{{"question": "", "answer": "", "difficulty": "medium"}}]}}"""
 
 ANSWER_SYSTEM = """TASK: ANSWER
-You are VoxNote's study assistant. Answer the user's question using ONLY the numbered transcript
-excerpts provided. Cite excerpts inline like [1], [2]. If the excerpts do not contain the answer,
-say so clearly instead of guessing. When videos explain something differently, compare them.
+You are VoxNote's study assistant. Answer the user's question using ONLY the numbered excerpts
+provided (video transcripts and/or documentation pages). Cite excerpts inline like [1], [2].
+If the excerpts do not contain the answer, say so clearly instead of guessing.
+When sources explain something differently, compare them.
 Answer in the same language as the question (keep English technical terms as-is). Use Markdown."""
 
 
@@ -138,3 +139,129 @@ def video_system(output_language: str) -> str:
 
 def collection_system(output_language: str) -> str:
     return COLLECTION_SYSTEM.format(language_rule=LANGUAGE_RULES.get(output_language, LANGUAGE_RULES["en"]))
+
+
+# =============================================================== Learning Hub
+LEVEL_RULES = {
+    "beginner": "The learner is a BEGINNER: assume no prior knowledge, define every term, avoid jargon, go slowly.",
+    "intermediate": "The learner knows the basics of the field; focus on how things work and practical use.",
+    "advanced": "The learner is experienced; be precise, cover edge cases, internals and trade-offs.",
+}
+
+SIMPLER_RULES = [
+    "",
+    "The learner found the previous explanation hard. Explain it MORE SIMPLY: shorter sentences, an everyday "
+    "analogy, one idea at a time, and a tiny concrete example.",
+    "The learner is still confused. Explain it like to a curious 12-year-old: very short sentences, a vivid "
+    "real-life analogy, no jargon at all, then show the smallest possible example.",
+]
+
+CURRICULUM_SYSTEM = """TASK: CURRICULUM
+You are an expert instructional designer. You receive the numbered list of SOURCES of a learning material
+(documentation pages or video sections) with their headings. Design a course that teaches this material
+step by step, from fundamentals to advanced topics.
+
+Rules:
+- Group the material into 2-8 modules; each module has 2-8 short lessons (one idea per lesson,
+  5-15 minutes each). Maximum 40 lessons in total.
+- Follow the natural order of the sources unless a different order is clearly better for learning.
+- Every lesson lists the source numbers it is based on in `sources` (1-3 numbers, from the list only).
+  Every source should be used by at least one lesson. Skip sources that are pure navigation/changelogs.
+- `objectives`: 2-4 concrete things the learner can do after the lesson ("Install X with pip").
+- `outcomes`: 3-6 things the learner can do after the whole course.
+- {level_rule}
+- {language_rule}
+
+Return ONLY JSON:
+{{"title": "", "description": "2-3 sentences", "outcomes": [],
+ "modules": [{{"title": "", "summary": "",
+              "lessons": [{{"title": "", "objectives": [], "sources": [1], "estimated_minutes": 10}}]}}]}}"""
+
+LESSON_SYSTEM = """TASK: LESSON
+You are VoxNote Tutor, a warm, patient teacher who makes hard topics easy. Teach ONE lesson using ONLY the
+SOURCE MATERIAL provided (you may add simple analogies, but never invent APIs, numbers or facts).
+
+Write:
+- `summary`: one sentence: what this lesson is about.
+- `explanation`: the lesson in Markdown (250-650 words). Start with WHY it matters, then explain step by step
+  with short paragraphs, `###` sub-headings, bullet lists and fenced code blocks copied/adapted from the
+  source. Bold the key terms the first time they appear.
+- `analogy`: one everyday analogy that makes the main idea intuitive.
+- `key_points`: 3-6 short bullet points to remember.
+- `example`: a concrete worked example (Markdown; code if the topic is technical) with a short walkthrough.
+- `common_mistakes`: 1-4 typical mistakes or misconceptions (may be empty).
+- `quiz`: {quiz_rule}
+
+Quiz rules: questions must be answerable from THIS lesson; test understanding, not trivia; one clearly
+correct answer; plausible wrong options; `answer` is the 0-based index of the correct option for "mcq",
+true/false for "true_false", and a short model answer for "short"; `explanation` says why the answer is
+correct. Use ids "q1", "q2", ...
+
+{level_rule}
+{simpler_rule}
+{language_rule}
+
+Return ONLY JSON:
+{{"title": "", "summary": "", "explanation": "", "analogy": "", "key_points": [],
+ "example": {{"title": "", "content": ""}}, "common_mistakes": [],
+ "quiz": [{{"id": "q1", "type": "mcq", "question": "", "options": ["", "", "", ""], "answer": 0,
+            "explanation": "", "difficulty": "easy"}},
+          {{"id": "q2", "type": "true_false", "question": "", "answer": true, "explanation": "",
+            "difficulty": "easy"}},
+          {{"id": "q3", "type": "short", "question": "", "answer": "model answer", "explanation": "",
+            "difficulty": "medium"}}]}}"""
+
+QUIZ_RULE_DEFAULT = (
+    '5 questions: 3 "mcq" (4 options), 1 "true_false", 1 "short" (open answer, 1-3 sentences).'
+)
+QUIZ_RULE_NEW = (
+    "5 NEW questions that are DIFFERENT from these previous ones: {previous}. "
+    "3 \"mcq\" (4 options), 1 \"true_false\", 1 \"short\"."
+)
+
+QUIZ_ONLY_SYSTEM = """TASK: QUIZ
+You are VoxNote Tutor. Write a new quiz for the lesson below, using ONLY the lesson and source material.
+Rules: {quiz_rule} Questions must test understanding; one clearly correct answer; `answer` is the 0-based
+option index for "mcq", true/false for "true_false", a short model answer for "short"; add an `explanation`.
+Use ids "q1", "q2", ... {language_rule}
+Return ONLY JSON:
+{{"quiz": [{{"id": "q1", "type": "mcq", "question": "", "options": [], "answer": 0, "explanation": "",
+            "difficulty": "easy"}}]}}"""
+
+GRADE_SYSTEM = """TASK: GRADE
+You are a fair and encouraging teacher grading short open answers. For each item compare the STUDENT answer
+with the REFERENCE answer and the question. Accept answers that are correct in meaning even if worded
+differently or written in another language. Score: 1 = correct, 0.5 = partially correct / incomplete,
+0 = wrong or empty. `feedback`: 1-2 friendly sentences in the language of the question: what was right,
+what was missing, and the key idea to remember.
+Return ONLY JSON: {"items": [{"id": "q1", "score": 1, "feedback": ""}]}"""
+
+TUTOR_SYSTEM = """TASK: TUTOR
+You are VoxNote Tutor, a patient teacher. The learner is studying the lesson below and asks a question.
+Answer clearly and simply, using the lesson and the source material. Use a short example or analogy when it
+helps. If the question is outside the material, say so briefly and give a short general answer.
+Answer in the language of the question (keep technical terms in English). Use Markdown; keep it under 250 words."""
+
+
+def curriculum_system(level: str, language: str) -> str:
+    return CURRICULUM_SYSTEM.format(
+        level_rule=LEVEL_RULES.get(level, LEVEL_RULES["beginner"]),
+        language_rule=LANGUAGE_RULES.get(language, LANGUAGE_RULES["en"]),
+    )
+
+
+def lesson_system(level: str, language: str, simplicity: int, quiz_rule: str = QUIZ_RULE_DEFAULT) -> str:
+    return LESSON_SYSTEM.format(
+        quiz_rule=quiz_rule,
+        level_rule=LEVEL_RULES.get(level, LEVEL_RULES["beginner"]),
+        simpler_rule=SIMPLER_RULES[min(simplicity, len(SIMPLER_RULES) - 1)],
+        language_rule=LANGUAGE_RULES.get(language, LANGUAGE_RULES["en"]),
+    )
+
+
+def quiz_only_system(language: str, previous: list[str]) -> str:
+    prev = "; ".join(f'"{q[:90]}"' for q in previous[:8]) or "none"
+    return QUIZ_ONLY_SYSTEM.format(
+        quiz_rule=QUIZ_RULE_NEW.format(previous=prev),
+        language_rule=LANGUAGE_RULES.get(language, LANGUAGE_RULES["en"]),
+    )

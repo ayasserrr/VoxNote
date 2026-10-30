@@ -1,14 +1,12 @@
+import { MessageCircleQuestion } from "lucide-react";
 import AskPanel from "../components/AskPanel";
+import { PageHeader } from "../components/ui";
 
 export default function AskPage() {
   return (
     <div>
-      <div className="page-head">
-        <div>
-          <h1>Ask your library</h1>
-          <p className="muted">Questions are answered from every video you have processed, with timestamped citations.</p>
-        </div>
-      </div>
+      <PageHeader icon={<MessageCircleQuestion size={22} />} title="Ask your library"
+        subtitle="Questions are answered from every video and documentation site you have added, with citations." />
       <div className="card">
         <AskPanel />
       </div>

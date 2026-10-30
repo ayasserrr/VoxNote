@@ -1,6 +1,6 @@
 # Roadmap
 
-## Done — v1.0
+## Done
 
 **Phase 1 – System design:** requirements, C4 diagrams, data model, API contracts ([ARCHITECTURE.md](ARCHITECTURE.md), [API.md](API.md))
 
@@ -22,8 +22,16 @@ per-video and playlist books, Markdown export
 
 **Phase 9 (partial) – Advanced AI:** Ask your playlist / library (BM25 RAG with citations), full-text search, review questions, concept maps
 
+**v2.0 – Learning Hub:** documentation crawler (sitemap, robots.txt, main-content extraction), AI curriculum design,
+on-demand lessons with analogies and worked examples, quizzes (MCQ / true-false / short answer) with AI grading and feedback,
+"explain it more simply", lesson tutor, unlocking, XP and progress, dashboard, redesigned UI (sidebar app shell,
+Markdown with code copy, toasts, mobile layout), automatic database migrations
+
 ## Next
 
+- [ ] Spaced repetition: resurface questions you missed after 1/3/7 days
+- [ ] Playwright-based rendering for JavaScript-only documentation sites
+- [ ] Course export (PDF / Markdown / Anki)
 - [ ] Hybrid retrieval: pgvector + multilingual embeddings (`intfloat/multilingual-e5-small`) combined with BM25 using reciprocal rank fusion
 - [ ] Flashcards (Anki `.apkg` export) and scored quizzes
 - [ ] Server-sent events instead of polling

@@ -4,14 +4,22 @@
 
 ### AI-Powered Video Knowledge Extraction
 
-**Turn every video into a complete learning resource.**
+**Your AI learning hub — turn videos and documentation into notes, courses and quizzes.**
 
-VoxNote takes YouTube videos and whole playlists and turns what the speaker says into detailed, organized,
-bilingual (Arabic / English) learning documents. Each document has the full transcript, an explanation of every concept,
-code, examples, a glossary, review questions and clickable timestamps. You can then **ask questions across the whole
-playlist** and get answers that cite the exact moments in the videos.
+VoxNote has two things it does:
 
-FastAPI · React + TypeScript · PostgreSQL/SQLite · Celery + Redis · Whisper · free LLMs (Groq, Gemini, OpenRouter, Ollama) · ReportLab · Docker
+1. **Learn from documentation.** Paste any documentation site (a framework tutorial, a library's docs, an API guide).
+   VoxNote reads every page, designs a step-by-step **course**, and then teaches it to you one small lesson at a time:
+   a simple explanation with an analogy and a worked example, then a **quiz** (multiple choice, true/false, short answer).
+   Your answers are **corrected with explanations and feedback**. Pass the quiz to unlock the next lesson. If something is hard,
+   click **"Explain it more simply"** or ask the built-in **tutor**.
+2. **Learn from YouTube.** Paste a video or a whole playlist. VoxNote transcribes it (Arabic, English or mixed) and produces detailed,
+   bilingual study documents (PDF + Markdown) with every concept, code sample, example, glossary term and clickable timestamps.
+   Any video or playlist can also be turned into an interactive course with quizzes.
+
+Then **ask questions across everything** you added; answers cite the exact video moment or documentation page.
+
+FastAPI · React + TypeScript · PostgreSQL/SQLite · Celery + Redis · Whisper · free LLMs (Groq, Gemini, OpenRouter, Ollama) · BeautifulSoup · ReportLab · Docker
 
 </div>
 
@@ -19,7 +27,8 @@ FastAPI · React + TypeScript · PostgreSQL/SQLite · Celery + Redis · Whisper 
 
 ## Contents
 
-- [What it does](#what-it-does)
+- [Learning Hub (documentation → course → quizzes)](#learning-hub)
+- [What it does with videos](#what-it-does)
 - [Quick start (5 minutes)](#quick-start-5-minutes)
 - [Free AI providers](#free-ai-providers--how-to-get-keys)
 - [Using the app](#using-the-app)
@@ -34,6 +43,43 @@ FastAPI · React + TypeScript · PostgreSQL/SQLite · Celery + Redis · Whisper 
 
 More documentation in [`docs/`](docs): [architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) ·
 [free AI providers](docs/FREE_AI_PROVIDERS.md) · [evaluation](docs/EVALUATION.md) · [roadmap](docs/ROADMAP.md)
+
+---
+
+## Learning Hub
+
+```
+ documentation URL ──▶ crawler ──▶ clean pages ──▶ AI curriculum ──▶ modules ▶ lessons
+                     (sitemap,     (headings,       (2-8 modules,
+                      robots.txt,   code, tables)    one idea per lesson)
+                      sidebar order)
+                                                        │ for each lesson, generated when you open it
+                                                        ▼
+        ┌─────────────── Learn ───────────────┐  ┌──── Practice ────┐  ┌───────── Result ──────────┐
+        │ why it matters · simple explanation │  │ multiple choice   │  │ score · ✓/✗ per question  │
+        │ analogy · worked example · key      │─▶│ true / false      │─▶│ correct answer + why      │
+        │ points · common mistakes · sources  │  │ short answer      │  │ AI feedback on your text  │
+        └─────────────────────────────────────┘  └───────────────────┘  │ ≥70% → next lesson unlocks│
+             ▲  "Explain it more simply"  ·  tutor chat about the lesson   └───────────────────────────┘
+```
+
+- **Any docs site.** Start from the page where the docs begin (for example `https://docs.python.org/3/tutorial/`). The crawler
+  stays inside that section, follows the sidebar order, also uses `sitemap.xml`, respects `robots.txt`, and keeps
+  headings, code blocks, lists and tables while removing navigation, footers and cookie banners. Up to 300 pages.
+- **Course design.** The AI groups the pages into modules and short lessons, each linked to the 1–3 pages it teaches.
+  Your level (beginner / intermediate / advanced) and teaching language (English, Arabic, or Arabic with English terms)
+  shape every lesson.
+- **Lessons on demand.** A lesson is generated the first time you open it, and the next one is prepared in the background
+  while you study. Even a 300-page site stays within free AI limits.
+- **Real practice.** Five questions per lesson. Multiple-choice and true/false answers are checked exactly; short answers are
+  graded by the AI for meaning, in any language, with partial credit and feedback. Answers are never sent to the browser
+  before you submit. *Retry*, or ask for *new questions*.
+- **Stuck?** *Explain it more simply* rewrites the lesson with shorter sentences and an everyday analogy (up to two levels simpler).
+  The **tutor** answers your questions using the lesson and its source pages.
+- **Progress.** Lessons unlock as you pass them. The app tracks best scores, attempts, XP and per-course progress, and the dashboard
+  has a *Continue learning* section.
+- **Videos too.** On any processed video or playlist, click **Learn this as a course**. Lessons are built from the video chapters,
+  and each source links to the exact moment.
 
 ---
 
@@ -190,17 +236,23 @@ The **Settings** page in the app shows which providers are active.
 
 ## Using the app
 
-1. **New** – paste a video or playlist URL. A preview shows the title, channel, number of videos and total duration. Then choose:
+1. **Dashboard** – one smart input: paste a YouTube link (→ notes and PDF) or a docs link (→ course). It also shows your XP,
+   lessons completed, average quiz score, *Continue learning* and recent items.
+2. **New → Documentation** – docs URL, your level, teaching language, maximum pages, "only this section". You get live
+   crawl progress, then **Open my course**.
+3. **Learning Hub** – your courses with progress rings. Course page: modules and lessons (locked / available / completed with score),
+   stats, outcomes and *Continue*. Lesson page: **Learn → Practice → Result**, *Explain it more simply*, tutor, and previous/next navigation.
+4. **New → YouTube** – paste a video or playlist URL. A preview shows the title, channel, number of videos and total duration. Then choose:
    - *Document language*: Auto / English / Arabic / Bilingual
    - *Detail*: Comprehensive (captures everything) or Standard (fewer LLM calls)
    - Include transcript, clickable timestamps, one document per video, combined playlist book, maximum number of videos
-2. **Collection page** – live status for every video (*Transcribing → AI extraction → Verifying → Generating documents*),
+5. **Collection page** – live status for every video (*Transcribing → AI extraction → Verifying → Generating documents*),
    per-video PDF/Markdown downloads, the playlist book, *Retry failed*, *Regenerate with new settings*, and a processing log.
-3. **Course overview** tab (playlists) – summary, learning path, concept map, recurring concepts, unified glossary and course questions.
-4. **Video page** – embedded player, interactive notes (Overview / Concepts / Technical / Examples / Takeaways / Glossary / Questions),
+6. **Course overview** tab (playlists) – summary, learning path, concept map, recurring concepts, unified glossary and course questions.
+7. **Video page** – embedded player, interactive notes (Overview / Concepts / Technical / Examples / Takeaways / Glossary / Questions),
    a searchable transcript where every timestamp jumps to that moment on YouTube, *Ask this video*, and quality metrics.
-5. **Ask** – questions across your **entire library**, answered with citations.
-6. **Library** – every collection, plus full-text search across all transcripts.
+8. **Ask** – questions across your **entire library** (videos and docs), answered with citations.
+9. **Library** – every collection, plus full-text search across all transcripts and documentation pages.
 
 ---
 
@@ -251,13 +303,17 @@ VoxNote/
 │   ├── app/
 │   │   ├── main.py                 # FastAPI app, middleware, lifespan (DB init, job recovery)
 │   │   ├── config.py               # all settings (env / .env)
-│   │   ├── models.py               # SQLAlchemy models: User, Collection, Video, ProcessingJob,
-│   │   │                           #   Transcript, TranscriptSegment, ExtractedKnowledge, Document, ProcessingLog
-│   │   ├── api/                    # routers: auth, collections, videos, documents, ask, system
+│   │   ├── models.py               # SQLAlchemy models: User, Collection, Video, ProcessingJob, Transcript,
+│   │   │                           #   TranscriptSegment, ExtractedKnowledge, Document, ProcessingLog,
+│   │   │                           #   DocPage, Course, Lesson, QuizAttempt
+│   │   ├── api/                    # routers: auth, collections, videos, documents, ask, learning, system
 │   │   ├── schemas/
 │   │   │   ├── api.py              # request/response models
-│   │   │   └── knowledge.py        # LLM structured-output schemas (validated)
+│   │   │   ├── knowledge.py        # LLM structured-output schemas (validated)
+│   │   │   └── learning.py         # curriculum / lesson / quiz / grading schemas
 │   │   ├── services/
+│   │   │   ├── crawler.py          # documentation crawler + main-content extraction
+│   │   │   ├── learning.py         # curriculum, lessons, quizzes, grading, tutor, progress
 │   │   │   ├── youtube.py          # URL parsing + metadata/playlists via yt-dlp
 │   │   │   ├── transcripts.py      # captions → yt-dlp subtitles → audio + Whisper
 │   │   │   ├── stt.py              # Groq Whisper / faster-whisper, ffmpeg chunking
@@ -271,7 +327,8 @@ VoxNote/
 │   │   │   ├── storage.py          # local / S3 storage
 │   │   │   ├── mock_llm.py         # offline model for tests & demo
 │   │   │   └── pdf/                # ReportLab renderer + bidi text + bundled fonts
-│   │   ├── pipeline/orchestrator.py# stages, retries, playlist synthesis
+│   │   ├── pipeline/orchestrator.py# video stages, retries, playlist synthesis
+│   │   ├── pipeline/docs.py        # docs: crawl → pages → course
 │   │   └── workers/                # queue abstraction + Celery app
 │   ├── alembic/                    # database migrations
 │   ├── tests/                      # pytest suite (runs offline)
@@ -279,8 +336,9 @@ VoxNote/
 │   └── requirements*.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/                  # New, Library, Collection, Video, Ask, Settings, Login
-│   │   ├── components/             # KnowledgeView, TranscriptView, AskPanel, ...
+│   │   ├── pages/                  # Dashboard, New, LearningHub, Course, Lesson, Library, Collection,
+│   │   │                           #   DocPage, Video, Ask, Settings, Login
+│   │   ├── components/             # Layout, Markdown, KnowledgeView, TranscriptView, AskPanel, CourseCard, ...
 │   │   ├── api.ts · types.ts · auth.tsx · styles.css
 │   ├── Dockerfile · nginx.conf
 ├── docs/                           # architecture, API, providers, evaluation, roadmap
@@ -310,6 +368,8 @@ All settings are environment variables, documented inline in [`.env.example`](.e
 | `TASK_BACKEND` | `thread` | `thread` or `celery` |
 | `CHUNK_MAX_TOKENS` | `2500` | Transcript chunk size for extraction |
 | `STORAGE_BACKEND` | `local` | `local` or `s3` |
+| `QUIZ_PASS_SCORE` | `0.7` | Score needed to complete a lesson |
+| `CRAWL_MAX_PAGES` / `CRAWL_DELAY` | `300` / `0.3` | Documentation crawl limits |
 | `JWT_SECRET` | dev value | **Change this for any deployment** |
 
 ---
@@ -338,11 +398,13 @@ To use Ollama on your host machine from Docker, set `OLLAMA_ENABLED=true`. The c
 ```bash
 make test                     # backend tests + frontend type-check
 # or
-cd backend && pytest -q       # 30 tests, fully offline (mock LLM, stubbed YouTube)
+cd backend && pytest -q       # 41 tests, fully offline (mock LLM, stubbed YouTube, fake docs site)
 cd frontend && npm run build
 ```
 
-The tests cover URL parsing, language detection, chunking, JSON repair, lenient schema validation, concept merging, auth/JWT, Arabic RTL
+The tests cover the documentation crawler (scope, robots.txt, sitemap, page limits, content extraction), the full
+docs → course → lesson → quiz → grading → unlock flow, quiz-schema normalisation and keyword-fallback grading,
+curriculum sanitising, courses built from videos, URL parsing, language detection, chunking, JSON repair, lenient schema validation, concept merging, auth/JWT, Arabic RTL
 line wrapping, PDF generation (English, Arabic and the playlist book), Markdown export, the complete video and playlist pipelines through the API,
 RAG answers and search, failure handling plus single-video retry, and per-user ownership checks.
 CI (GitHub Actions) runs lint, tests, migrations, the frontend build and the Docker builds on every push.
@@ -361,7 +423,11 @@ invalid timestamps, failed chunks, LLM calls and tokens, and processing time per
 | Video has no captions | Set `GROQ_API_KEY` (free Whisper) and install `ffmpeg`, or use `STT_PROVIDER=local` with `pip install faster-whisper`. |
 | HTTP 429 / slow progress | Free-tier rate limit. Set `LLM_MIN_INTERVAL=3`, add a second provider key, or choose *Standard* detail. |
 | Arabic shows as boxes in the PDF | The bundled DejaVu fonts cover Arabic; make sure `backend/app/services/pdf/fonts/` exists. |
-| Want to move from local SQLite to Alembic migrations | `cd backend && alembic stamp head` once, then use `alembic upgrade head` after future schema changes. |
+| Docs crawl finds almost no text | The site renders its content with JavaScript. Try the docs' GitHub README, a static mirror, or a more specific section URL. |
+| Docs crawl went outside the docs | Keep "Only this section" enabled and start from the docs root (e.g. `/docs/` or `/tutorial/`). |
+| A lesson fails to prepare | Usually a free-tier rate limit. Click *Try again* after a few seconds, or add a second provider key. |
+| YouTube transcripts suddenly fail | YouTube changes often: `pip install -U yt-dlp youtube-transcript-api`. |
+| Upgrading from VoxNote 1.0 | Nothing to do: the database schema is migrated automatically on startup and existing data is kept. |
 
 ---
 
@@ -378,6 +444,7 @@ link back to the original video and clearly mark AI-added explanations.
 
 - [x] **Level 1 – Core MVP:** videos and playlists, Arabic/English, transcription, detailed extraction, per-video and combined PDFs, progress and retries, library
 - [x] **Level 2 (partial):** chapters, timestamp citations, review questions, concept maps, search, *Ask your playlist*
+- [x] **Learning Hub:** documentation crawler, AI curricula, on-demand lessons, quizzes with AI grading and feedback, simpler re-explanations, tutor, progress and XP
 - [ ] Flashcards / spaced-repetition export (Anki), quizzes with scoring
 - [ ] Speaker diarization, video-frame OCR for on-screen code and slides
 - [ ] Vector search (pgvector) alongside BM25 (hybrid retrieval)

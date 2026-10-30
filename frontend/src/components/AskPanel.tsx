@@ -46,13 +46,13 @@ export default function AskPanel({
     <div className="ask">
       {turns.length === 0 && (
         <p className="muted">
-          Ask anything about the processed content. Answers are grounded in the transcripts and cite the exact moments in the videos.
+          Ask anything about your processed videos and documentation. Answers are grounded in the sources and cite them — click a number to jump to it.
         </p>
       )}
       {turns.map((t, ti) => (
         <div key={ti} className="turn">
           <div className="question" dir="auto">{t.question}</div>
-          {!t.response && !t.error && <div className="spinner" />}
+          {!t.response && !t.error && <div className="dots"><i /><i /><i /></div>}
           {t.error && <div className="alert error">{t.error}</div>}
           {t.response && (
             <div className="answer-card">
@@ -68,7 +68,11 @@ export default function AskPanel({
                       <li key={s.ref} ref={(el) => (refs.current[`${ti}-${s.ref}`] = el)}>
                         <div className="source-head">
                           <strong>[{s.ref}] {s.video_title}</strong>
-                          <Timestamp youtubeId={s.youtube_id} start={s.start} end={s.end} />
+                          {s.kind === "page" ? (
+                            s.url && <a className="ts" href={s.url} target="_blank" rel="noreferrer">open page ↗</a>
+                          ) : (
+                            <Timestamp youtubeId={s.youtube_id} start={s.start} end={s.end} />
+                          )}
                         </div>
                         <p dir="auto">{s.text.length > 320 ? s.text.slice(0, 320) + "…" : s.text}</p>
                       </li>

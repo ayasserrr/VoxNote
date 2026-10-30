@@ -44,6 +44,30 @@ Status values: `pending, queued, processing, completed, partial, failed, cancell
 Video stages: `waiting, metadata, transcribing, language, extracting, assembling, verifying, rendering, done`
 (collections also use `synthesizing`).
 
+## Documentation & Learning Hub
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/collections/docs` | `{url, max_pages, same_path_only, level, language}` → crawl docs and build a course |
+| POST | `/collections/{id}/recrawl` | read the documentation again |
+| GET | `/collections/{id}/pages/{page_id}` | one crawled page (clean Markdown content) |
+| POST | `/collections/{id}/course` | `{level, language}` → create/rebuild the course of any collection (docs, video, playlist) |
+| GET | `/courses` | your courses with progress stats |
+| GET | `/courses/{id}` | course + modules/lessons (status, best score) |
+| POST | `/courses/{id}/reset` | reset progress |
+| DELETE | `/courses/{id}` | delete the course (source material is kept) |
+| GET | `/lessons/{id}` | lesson (content if generated, quiz **without answers**, sources, last attempt) |
+| POST | `/lessons/{id}/prepare` | generate the lesson if needed (and prefetch the next one) |
+| POST | `/lessons/{id}/simplify` | re-explain more simply (+ fresh quiz) |
+| POST | `/lessons/{id}/regenerate` | regenerate the lesson |
+| POST | `/lessons/{id}/new-quiz` | new, different questions |
+| POST | `/lessons/{id}/submit` | `{answers: {"q1": 0, "q2": true, "q3": "text"}}` → graded attempt, unlocks the next lesson when passed |
+| POST | `/lessons/{id}/tutor` | `{question}` → tutor answer grounded in the lesson |
+| GET | `/dashboard` | XP, lessons completed, average score, continue-learning, recent items |
+
+Lesson status values: `locked`, `available`, `completed`. Quiz question types: `mcq` (answer = option index),
+`true_false` (boolean), `short` (free text, graded by the LLM with keyword-overlap fallback).
+
 ## Videos
 
 | Method | Path | Description |

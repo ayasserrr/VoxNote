@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
@@ -14,17 +15,20 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import settings
 from app.db import get_db
 from app.deps import get_current_user, get_owned_collection
-from app.models import Collection, CollectionKind, ProcessingLog, Stage, Status, User, Video
+from app.models import Collection, CollectionKind, DocPage, ProcessingLog, Stage, Status, User, Video
 from app.pipeline.orchestrator import recompute_collection_status
 from app.schemas.api import (
     CollectionCreate,
     CollectionOut,
     CollectionSummary,
     LogOut,
+    PageDetailOut,
     ProcessingSettings,
     UrlPreviewIn,
     UrlPreviewOut,
 )
+from app.schemas.learning import DocsCreate
+from app.services.crawler import normalize_url
 from app.services.storage import get_storage
 from app.services.youtube import (
     YouTubeError,
@@ -33,20 +37,27 @@ from app.services.youtube import (
     parse_youtube_url,
     video_url,
 )
-from app.workers.queue import enqueue_video
+from app.workers.queue import enqueue_docs, enqueue_video
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 
 ALLOWED_MEDIA = {".mp3", ".wav", ".m4a", ".mp4", ".webm", ".ogg", ".opus", ".flac", ".mkv", ".mov", ".aac"}
 
 
-def _summary(col: Collection) -> dict:
+def summary_fields(col: Collection) -> dict:
     videos = col.videos
     n = len(videos)
     done = sum(1 for v in videos if v.status == Status.completed.value)
     failed = sum(1 for v in videos if v.status == Status.failed.value)
-    progress = sum(v.progress if v.status != Status.failed.value else 1.0 for v in videos) / n if n else 0.0
-    return {"video_count": n, "completed_count": done, "failed_count": failed, "progress": round(progress, 3)}
+    if col.kind == CollectionKind.docs.value:
+        progress = col.progress or 0.0
+    else:
+        progress = sum(v.progress if v.status != Status.failed.value else 1.0 for v in videos) / n if n else 0.0
+    return {"video_count": n, "completed_count": done, "failed_count": failed, "progress": round(progress, 3),
+            "page_count": len(col.pages), "course_id": col.course.id if col.course else None}
+
+
+_summary = summary_fields
 
 
 def _collection_out(col: Collection) -> CollectionOut:
@@ -116,6 +127,56 @@ async def create_collection(body: CollectionCreate, user: User = Depends(get_cur
     return _collection_out(col)
 
 
+@router.post("/docs", response_model=CollectionOut, status_code=201)
+def create_docs_collection(body: DocsCreate, user: User = Depends(get_current_user),
+                           db: Session = Depends(get_db)) -> CollectionOut:
+    """Learn from a documentation website: crawl it, then build an interactive course."""
+    url = body.url.strip()
+    if not re.match(r"^https?://", url):
+        url = "https://" + url
+    if not normalize_url(url) or not urlparse(url).netloc or "." not in urlparse(url).netloc.split(":")[0]:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Please enter a valid documentation URL")
+    try:
+        parse_youtube_url(url)
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This is a YouTube link - use the YouTube tab instead")
+    except YouTubeError:
+        pass
+    host = urlparse(url).netloc
+    col = Collection(user_id=user.id, kind=CollectionKind.docs.value, source_url=url, title=host,
+                     status=Status.queued.value, stage=Stage.waiting.value,
+                     thumbnail_url=f"https://www.google.com/s2/favicons?domain={host}&sz=128",
+                     settings=body.model_dump())
+    db.add(col)
+    db.commit()
+    enqueue_docs(col.id)
+    db.refresh(col)
+    return _collection_out(col)
+
+
+@router.post("/{collection_id}/recrawl", response_model=CollectionOut)
+def recrawl(collection_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    col = get_owned_collection(collection_id, user, db)
+    if col.kind != CollectionKind.docs.value:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only documentation collections can be re-crawled")
+    if col.status in (Status.queued.value, Status.processing.value):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Already processing")
+    col.status, col.stage, col.error, col.progress = Status.queued.value, Stage.waiting.value, None, 0.0
+    db.commit()
+    enqueue_docs(col.id)
+    db.refresh(col)
+    return _collection_out(col)
+
+
+@router.get("/{collection_id}/pages/{page_id}", response_model=PageDetailOut)
+def get_page(collection_id: str, page_id: str, user: User = Depends(get_current_user),
+             db: Session = Depends(get_db)):
+    get_owned_collection(collection_id, user, db)
+    page = db.get(DocPage, page_id)
+    if not page or page.collection_id != collection_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Page not found")
+    return page
+
+
 @router.post("/upload", response_model=CollectionOut, status_code=201)
 async def upload_media(
     file: UploadFile = File(...),
@@ -156,7 +217,8 @@ async def upload_media(
 @router.get("", response_model=list[CollectionSummary])
 def list_collections(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     cols = db.scalars(
-        select(Collection).where(Collection.user_id == user.id).options(selectinload(Collection.videos))
+        select(Collection).where(Collection.user_id == user.id)
+        .options(selectinload(Collection.videos), selectinload(Collection.pages), selectinload(Collection.course))
         .order_by(Collection.created_at.desc())
     ).all()
     return [CollectionSummary.model_validate(c, from_attributes=True).model_copy(update=_summary(c)) for c in cols]
@@ -192,6 +254,8 @@ def delete_collection(collection_id: str, user: User = Depends(get_current_user)
 def retry_failed(collection_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Retry only the failed videos - completed ones are never re-processed."""
     col = get_owned_collection(collection_id, user, db)
+    if col.kind == CollectionKind.docs.value:
+        return recrawl(collection_id, user, db)
     failed = [v for v in col.videos if v.status in (Status.failed.value, Status.cancelled.value)]
     if not failed:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No failed videos to retry")

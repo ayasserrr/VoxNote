@@ -117,7 +117,23 @@ class CollectionSummary(ORM):
     video_count: int = 0
     completed_count: int = 0
     failed_count: int = 0
+    page_count: int = 0
     progress: float = 0.0
+    course_id: str | None = None
+
+
+class PageOut(ORM):
+    id: str
+    position: int
+    url: str
+    title: str
+    headings: list[str]
+    word_count: int
+    language: str | None
+
+
+class PageDetailOut(PageOut):
+    content: str
 
 
 class CollectionOut(CollectionSummary):
@@ -125,8 +141,10 @@ class CollectionOut(CollectionSummary):
     error: str | None
     settings: dict[str, Any]
     synthesis: dict[str, Any] | None
+    meta: dict[str, Any] = {}
     videos: list[VideoOut]
     documents: list[DocumentOut]
+    pages: list[PageOut] = []
 
 
 class SegmentOut(ORM):
@@ -173,7 +191,8 @@ class AskIn(BaseModel):
 
 class SourceRef(BaseModel):
     ref: int
-    video_id: str
+    kind: Literal["video", "page"] = "video"
+    video_id: str  # video id, or page id for documentation pages
     video_title: str
     youtube_id: str | None
     start: float
@@ -203,3 +222,113 @@ class SystemStatus(BaseModel):
     stt_available: bool
     ffmpeg_available: bool
     storage_backend: str
+
+
+# ---------------------------------------------------------- learning hub
+class LessonSummary(ORM):
+    id: str
+    position: int
+    module_index: int
+    module_title: str
+    title: str
+    objectives: list[str]
+    estimated_minutes: int
+    status: str
+    best_score: float | None
+    attempts: int
+    has_content: bool = False
+
+
+class CourseProgress(BaseModel):
+    lesson_count: int = 0
+    completed_count: int = 0
+    progress: float = 0.0
+    average_score: float | None = None
+    xp: int = 0
+    next_lesson_id: str | None = None
+    next_lesson_title: str | None = None
+    minutes_total: int = 0
+
+
+class CourseSummary(ORM):
+    id: str
+    collection_id: str
+    collection_kind: str = ""
+    source_url: str | None = None
+    thumbnail_url: str | None = None
+    title: str
+    description: str
+    level: str
+    language: str
+    status: str
+    error: str | None
+    created_at: datetime
+    updated_at: datetime
+    last_opened_at: datetime | None
+    stats: CourseProgress = CourseProgress()
+
+
+class CourseOut(CourseSummary):
+    outcomes: list[str]
+    lessons: list[LessonSummary]
+
+
+class LessonSource(BaseModel):
+    kind: str
+    title: str
+    url: str | None = None
+    page_id: str | None = None
+    video_id: str | None = None
+    youtube_id: str | None = None
+    start: float | None = None
+    end: float | None = None
+
+
+class AttemptOut(ORM):
+    id: str
+    score: float
+    passed: bool
+    results: list[dict[str, Any]]
+    created_at: datetime
+
+
+class LessonOut(LessonSummary):
+    course_id: str
+    course_title: str
+    language: str
+    content: dict[str, Any] | None
+    quiz: list[dict[str, Any]]
+    sources: list[LessonSource]
+    generating: bool
+    simplicity: int
+    prev_lesson_id: str | None
+    next_lesson_id: str | None
+    last_attempt: AttemptOut | None = None
+    pass_score: float
+
+
+class SubmitOut(BaseModel):
+    attempt: AttemptOut
+    lesson: LessonSummary
+    next_lesson_id: str | None
+    course_completed: bool
+
+
+class TutorOut(BaseModel):
+    answer: str
+    provider: str | None = None
+    model: str | None = None
+
+
+class DashboardOut(BaseModel):
+    collections: int
+    videos_processed: int
+    pages_read: int
+    documents: int
+    courses: int
+    lessons_completed: int
+    quizzes_taken: int
+    average_score: float | None
+    xp: int
+    continue_learning: list[CourseSummary]
+    recent: list[CollectionSummary]

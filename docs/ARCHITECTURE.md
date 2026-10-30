@@ -18,6 +18,8 @@
 | F10 | Show live progress for each video, retry failed videos individually, regenerate with new settings |
 | F11 | Question answering and search across one video, one playlist, or the whole library, with timestamp citations |
 | F12 | Multi-user accounts (start personal, architected for SaaS) |
+| F13 | Crawl a documentation website and build a step-by-step course from it |
+| F14 | Lessons with simple explanations, quizzes, automatic correction with feedback, unlocking and progress tracking |
 
 ### Non-functional requirements
 
@@ -158,7 +160,38 @@ DejaVu Sans is bundled (it covers Latin, Arabic and maths symbols), so no system
 Timestamps are `<a href="https://www.youtube.com/watch?v=ID&t=SECs">` links. The table of contents and PDF outline are generated with
 a multi-pass build.
 
-## 9. Security
+## 9. Learning Hub
+
+### Documentation crawler (`services/crawler.py`, `pipeline/docs.py`)
+- **Scope:** same host + the directory of the start URL (`/docs/intro` → `/docs/`), or the whole host. Assets, search, index,
+  login, tag and feed pages are skipped by extension/path rules. Fragments and tracking query strings are normalised away.
+- **Order:** breadth-first crawl following links in document order. Docs sidebars list pages in reading order, so the course
+  follows the docs' own structure. `sitemap.xml` (or the sitemaps in robots.txt) adds pages not linked from the start page.
+- **Politeness:** robots.txt is respected, there is a configurable delay between requests, a page limit, and an identifying user agent.
+- **Extraction:** pick the main content (`main`, `article`, `[role=main]`, common docs-theme containers, or the largest content-like
+  block), remove noise (nav/header/footer/aside, sidebars, TOCs, cookie banners, "edit this page"…) and convert to Markdown that keeps
+  headings, paragraphs, nested lists, definition lists, tables, inline code and fenced code blocks with their language.
+  Duplicate pages (content hash) and near-empty pages (JavaScript-rendered sites) are dropped, with warnings.
+
+### Course design (`services/learning.py`)
+- Sources are uniform *units*: a docs page, or a video chapter / 8-minute transcript window, each with a ref (`page_id`/`url`,
+  or `video_id` + `start`/`end`).
+- The curriculum prompt gets a condensed outline (title, headings, first lines) cut down to fit the budget. The LLM returns modules →
+  lessons with source numbers. `sanitize_curriculum` drops invalid references, enforces the limits and attaches unused sources to the
+  nearest lesson. If the LLM fails, a deterministic outline is built instead (one lesson per source), so a course is always created.
+
+### Lessons, quizzes, grading
+- Lessons are generated **lazily** (`/prepare`) from their source text (≤14k characters), the course level, the teaching language and a
+  "simplicity" level. A database **generation lock** (`generating_since`, claimed with an atomic `UPDATE`, expires after 5 minutes)
+  stops the background prefetch and a request from generating the same lesson twice. The client polls while another worker holds it.
+- The quiz is stored **with** answers but served **without** them (`public_quiz`); answers are revealed only in the graded attempt.
+- Grading: MCQ and true/false are checked deterministically. Open answers are graded together in one LLM call (score 0 / 0.5 / 1 plus
+  feedback). If the LLM is unavailable, a keyword-overlap score is used instead. A score ≥ `QUIZ_PASS_SCORE` completes the lesson and unlocks
+  the next one; best score and attempts are kept, and XP = Σ best score × 100 over completed lessons.
+- The tutor answers with the lesson text plus its sources as context.
+- Search and *Ask* index documentation pages as heading-aware passages next to the video transcripts.
+
+## 10. Security
 
 - PBKDF2-SHA256 (390k iterations, standard library only) for passwords; HS256 JWTs with configurable expiry.
 - Every collection, video and document lookup checks `user_id` ownership and returns 404, not 403, so the existence of other users' resources is not revealed.
@@ -166,7 +199,7 @@ a multi-pass build.
 - Upload type allow-list and size limit; storage keys are resolved inside the storage root (no path traversal).
 - `ALLOW_REGISTRATION=false` locks the instance down after the first account is created.
 
-## 10. Observability
+## 11. Observability
 
 - `GET /metrics`: `voxnote_videos_processed_total{status}`, `voxnote_stage_seconds{stage}`,
   `voxnote_llm_requests_total{provider,outcome}`, `voxnote_llm_tokens_total{provider,kind}`,

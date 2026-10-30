@@ -18,7 +18,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.db import session_scope
-from app.models import Collection, Stage, Status, Video
+from app.models import Collection, Course, Stage, Status, Video
 
 log = logging.getLogger(__name__)
 
@@ -73,6 +73,42 @@ def enqueue_synthesis(collection_id: str) -> None:
     _submit(synthesize_collection, collection_id)
 
 
+def enqueue_docs(collection_id: str) -> None:
+    if settings.task_backend == "celery":
+        from app.workers.celery_app import process_docs_task
+
+        process_docs_task.apply_async(args=[collection_id])
+        return
+    from app.pipeline.docs import process_docs
+
+    _submit(process_docs, collection_id)
+
+
+def enqueue_course(course_id: str) -> None:
+    if settings.task_backend == "celery":
+        from app.workers.celery_app import build_course_task
+
+        build_course_task.apply_async(args=[course_id])
+        return
+    from app.services.learning import build_course
+
+    _submit(build_course, course_id)
+
+
+def enqueue_lesson(lesson_id: str) -> None:
+    """Pre-generate a lesson in the background (best effort)."""
+    if not settings.prefetch_next_lesson:
+        return
+    if settings.task_backend == "celery":
+        from app.workers.celery_app import generate_lesson_task
+
+        generate_lesson_task.apply_async(args=[lesson_id])
+        return
+    from app.services.learning import prefetch_lesson
+
+    _submit(prefetch_lesson, lesson_id)
+
+
 def recover_pending() -> int:
     """Re-enqueue work interrupted by a restart (thread backend only)."""
     if settings.task_backend != "thread":
@@ -87,14 +123,25 @@ def recover_pending() -> int:
             v.status = Status.queued.value
         stuck = db.scalars(select(Collection).where(Collection.stage.in_(
             [Stage.synthesizing.value, Stage.rendering.value]))).all()
-        stuck_ids = [c.id for c in stuck if all(
+        stuck_ids = [c.id for c in stuck if c.kind != "docs" and all(
             v.status in (Status.completed.value, Status.failed.value) for v in c.videos)]
+        docs_ids = [c.id for c in db.scalars(select(Collection).where(
+            Collection.kind == "docs",
+            Collection.status.in_([Status.queued.value, Status.processing.value]))).all()]
+        course_ids = [c.id for c in db.scalars(select(Course).where(
+            Course.status.in_([Status.queued.value, Status.processing.value]))).all()
+            if c.collection_id not in docs_ids]  # the docs pipeline builds its own course
     for vid in ids:
         enqueue_video(vid)
     for cid in stuck_ids:
         enqueue_synthesis(cid)
-    if ids or stuck_ids:
-        log.info("recovered %d video job(s) and %d synthesis job(s)", len(ids), len(stuck_ids))
+    for cid in docs_ids:
+        enqueue_docs(cid)
+    for cid in course_ids:
+        enqueue_course(cid)
+    if ids or stuck_ids or docs_ids or course_ids:
+        log.info("recovered %d video, %d synthesis, %d docs and %d course job(s)",
+                 len(ids), len(stuck_ids), len(docs_ids), len(course_ids))
     return len(ids)
 
 

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { BookOpenCheck } from "lucide-react";
 import { useAuth } from "../auth";
 
 export default function LoginPage() {
@@ -27,13 +28,14 @@ export default function LoginPage() {
   return (
     <div className="auth-page">
       <div className="auth-hero">
-        <div className="logo big">V</div>
+        <div className="logo big"><BookOpenCheck size={32} /></div>
         <h1>VoxNote</h1>
-        <p className="tagline">Turn every video into a complete learning resource.</p>
+        <p className="tagline">Your AI learning hub — turn videos and documentation into notes, courses and quizzes.</p>
         <ul className="features">
-          <li>🎬 YouTube videos &amp; whole playlists</li>
+          <li>📚 Any documentation site → a step-by-step course</li>
+          <li>✅ Learn a small part, take a quiz, get corrected, move on</li>
+          <li>🎬 YouTube videos &amp; whole playlists → detailed notes</li>
           <li>🌍 Arabic, Egyptian Arabic, English &amp; mixed speech</li>
-          <li>🧠 Detailed concepts, code, examples, glossary &amp; quizzes</li>
           <li>📄 Professional PDFs with clickable timestamps</li>
           <li>💬 Ask questions across your whole playlist</li>
           <li>🆓 Runs on free AI models (Groq, Gemini, OpenRouter, Ollama)</li>

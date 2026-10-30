@@ -44,9 +44,35 @@ export const STAGE_LABEL: Record<string, string> = {
   verifying: "Verifying against transcript",
   rendering: "Generating documents",
   synthesizing: "Cross-video synthesis",
+  crawling: "Reading documentation",
+  structuring: "Designing your course",
   done: "Done",
 };
 
 export const PIPELINE = ["metadata", "transcribing", "language", "extracting", "assembling", "verifying", "rendering", "done"];
 
 export const isActive = (status: string) => status === "queued" || status === "processing" || status === "pending";
+
+export const LEVEL_LABEL: Record<string, string> = {
+  beginner: "Beginner",
+  intermediate: "Intermediate",
+  advanced: "Advanced",
+};
+
+export function pct(x: number | null | undefined): string {
+  return x == null ? "—" : `${Math.round(x * 100)}%`;
+}
+
+export function greeting(): string {
+  const h = new Date().getHours();
+  return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
+
+export function hostOf(url: string | null | undefined): string {
+  if (!url) return "";
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}

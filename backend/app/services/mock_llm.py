@@ -127,6 +127,74 @@ def _answer(user: str) -> str:
     return "Based on your videos (offline mock model):\n\n" + bullets
 
 
+def _sentences(text: str) -> list[str]:
+    text = re.sub(r"```.*?```", " ", text, flags=re.S)
+    parts = re.split(r"(?<=[.!?؟])\s+", re.sub(r"\s+", " ", re.sub(r"^#+ .*$", "", text, flags=re.M)))
+    return [p.strip() for p in parts if 30 <= len(p.strip()) <= 260]
+
+
+def _curriculum(user: str) -> dict:
+    items = re.findall(r"^\[(\d+)\]\s*(.+)$", user, flags=re.M)
+    modules, per = [], 3
+    for m in range(0, len(items), per):
+        chunk = items[m: m + per]
+        modules.append({
+            "title": f"Module {m // per + 1}: {chunk[0][1][:50]}",
+            "summary": "",
+            "lessons": [{"title": t.split(" [")[0][:80], "objectives": [f"Understand {t.split(' [')[0][:50]}"],
+                         "sources": [int(n)], "estimated_minutes": 8} for n, t in chunk],
+        })
+    title = re.search(r'material: "([^"]+)"', user)
+    return {"title": title.group(1) if title else "Course", "description": "A step-by-step course (mock).",
+            "outcomes": ["Understand the main ideas"], "modules": modules}
+
+
+def _lesson(user: str) -> dict:
+    src = user.split("SOURCE MATERIAL:", 1)[-1]
+    sents = _sentences(src) or ["This lesson explains the topic step by step using the documentation."]
+    code = re.search(r"```(\w*)\n(.*?)```", src, flags=re.S)
+    title = re.search(r'Lesson \d+: "([^"]+)"', user)
+    t = title.group(1) if title else "Lesson"
+    expl = f"### Why it matters\n\n{sents[0]}\n\n### How it works\n\n" + "\n\n".join(sents[1:5])
+    if code:
+        expl += f"\n\n```{code.group(1)}\n{code.group(2).strip()}\n```"
+    distractors = ["It is only used for styling web pages.", "It requires a paid license to use.",
+                   "It replaces the operating system."]
+    quiz = [
+        {"id": "q1", "type": "mcq", "question": f"Which statement about {t} is correct?",
+         "options": [sents[0][:160]] + distractors, "answer": 0,
+         "explanation": "This is stated in the lesson.", "difficulty": "easy"},
+        {"id": "q2", "type": "true_false", "question": sents[min(1, len(sents) - 1)][:200], "answer": True,
+         "explanation": "The lesson states this.", "difficulty": "easy"},
+        {"id": "q3", "type": "short", "question": f"In your own words, what is {t} about?",
+         "answer": sents[0], "explanation": "See the first section of the lesson.", "difficulty": "medium"},
+    ]
+    return {"title": t, "summary": sents[0][:200], "explanation": expl,
+            "analogy": f"Think of {t} like a recipe: follow the steps in order and you get a predictable result.",
+            "key_points": [s[:160] for s in sents[:4]],
+            "example": {"title": "Example", "content": f"```{code.group(1)}\n{code.group(2).strip()}\n```"
+                        if code else sents[-1]},
+            "common_mistakes": ["Skipping the setup steps."], "quiz": quiz}
+
+
+def _grade(user: str) -> dict:
+    items = []
+    for block in user.split("\n\n"):
+        qid = re.search(r"id: (\S+)", block)
+        ref = re.search(r"REFERENCE: (.*)", block)
+        ans = re.search(r"STUDENT: (.*)", block, flags=re.S)
+        if not qid:
+            continue
+        rw = set(re.findall(r"\w{4,}", (ref.group(1) if ref else "").lower()))
+        aw = set(re.findall(r"\w{4,}", (ans.group(1) if ans else "").lower()))
+        overlap = len(rw & aw) / len(rw) if rw else 0
+        score = 1 if overlap >= 0.4 else 0.5 if overlap >= 0.15 else 0
+        items.append({"id": qid.group(1), "score": score,
+                      "feedback": "Good answer!" if score == 1 else "Partly right — review the key idea."
+                      if score else "Not quite. Re-read the lesson's first section."})
+    return {"items": items}
+
+
 def mock_complete(messages: list[dict[str, str]], json_mode: bool) -> str:
     system = messages[0]["content"] if messages else ""
     user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
@@ -136,6 +204,17 @@ def mock_complete(messages: list[dict[str, str]], json_mode: bool) -> str:
         return json.dumps(_video(user), ensure_ascii=False)
     if "TASK: COLLECTION_SYNTHESIS" in system:
         return json.dumps(_collection(user), ensure_ascii=False)
+    if "TASK: CURRICULUM" in system:
+        return json.dumps(_curriculum(user), ensure_ascii=False)
+    if "TASK: LESSON" in system:
+        return json.dumps(_lesson(user), ensure_ascii=False)
+    if "TASK: QUIZ" in system:
+        return json.dumps({"quiz": _lesson(user)["quiz"][::-1]}, ensure_ascii=False)
+    if "TASK: GRADE" in system:
+        return json.dumps(_grade(user), ensure_ascii=False)
+    if "TASK: TUTOR" in system:
+        q = user.rsplit("LEARNER QUESTION:", 1)[-1].strip()
+        return f"Great question! (offline mock tutor)\n\n**{q}** — re-read the key points of this lesson."
     if "TASK: ANSWER" in system:
         return _answer(user)
     return json.dumps({}) if json_mode else ""

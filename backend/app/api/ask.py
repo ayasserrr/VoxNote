@@ -18,9 +18,10 @@ router = APIRouter(tags=["ask"])
 
 
 def _ref(i: int, p: search_svc.Passage) -> SourceRef:
-    return SourceRef(ref=i, video_id=p.video_id, video_title=p.video_title, youtube_id=p.youtube_id,
-                     start=p.start, end=p.end, text=p.text[:600],
-                     url=video_url(p.youtube_id, p.start) if p.youtube_id else None)
+    url = video_url(p.youtube_id, p.start) if p.youtube_id else p.url
+    return SourceRef(ref=i, kind="page" if p.kind == "page" else "video", video_id=p.video_id,
+                     video_title=p.video_title, youtube_id=p.youtube_id, start=p.start, end=p.end,
+                     text=p.text[:600], url=url)
 
 
 @router.post("/ask", response_model=AskOut)

@@ -1,6 +1,6 @@
 [project]
 name = "voxnote-backend"
-version = "1.0.0"
+version = "2.0.0"
 description = "VoxNote - AI-powered video knowledge extraction (API + workers)"
 requires-python = ">=3.11"
 

@@ -85,6 +85,11 @@ def _offline(monkeypatch):
     # Run background jobs synchronously so tests are deterministic.
     monkeypatch.setattr(queue, "_submit", lambda fn, arg, delay=0.0: fn(arg))
     monkeypatch.setattr(orchestrator.settings, "retry_base_delay", 0.0)
+    monkeypatch.setattr(orchestrator.settings, "crawl_delay", 0.0)
+    from app.pipeline import docs as docs_pipeline
+    from tests.docs_site import make_client
+
+    monkeypatch.setattr(docs_pipeline, "http_client_factory", make_client)
 
 
 @pytest.fixture

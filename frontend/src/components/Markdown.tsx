@@ -1,76 +1,80 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Check, Copy } from "lucide-react";
 
-/** Tiny, safe Markdown renderer for AI answers (no HTML injection). */
-function inline(text: string, onCite?: (n: number) => void): ReactNode[] {
-  const parts: ReactNode[] = [];
-  const re = /(\*\*[^*]+\*\*|`[^`]+`|\[\d+\])/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  let i = 0;
-  while ((m = re.exec(text))) {
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    const tok = m[0];
-    if (tok.startsWith("**")) parts.push(<strong key={i++}>{tok.slice(2, -2)}</strong>);
-    else if (tok.startsWith("`")) parts.push(<code key={i++}>{tok.slice(1, -1)}</code>);
-    else {
-      const n = Number(tok.slice(1, -1));
-      parts.push(
-        <button key={i++} className="cite" onClick={() => onCite?.(n)}>
-          {n}
-        </button>,
-      );
-    }
-    last = m.index + tok.length;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
-}
-
-export default function Markdown({ text, onCite }: { text: string; onCite?: (n: number) => void }) {
-  const blocks: ReactNode[] = [];
-  const lines = text.split("\n");
-  let list: string[] = [];
-  let code: string[] | null = null;
-  const flushList = () => {
-    if (list.length) {
-      blocks.push(
-        <ul key={blocks.length}>
-          {list.map((l, i) => (
-            <li key={i}>{inline(l, onCite)}</li>
-          ))}
-        </ul>,
-      );
-      list = [];
+function CodeBlock({ children, lang }: { children: string; lang?: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(children);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable */
     }
   };
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    if (line.startsWith("```")) {
-      if (code) {
-        blocks.push(<pre key={blocks.length}><code>{code.join("\n")}</code></pre>);
-        code = null;
-      } else {
-        flushList();
-        code = [];
-      }
-      continue;
-    }
-    if (code) {
-      code.push(raw);
-      continue;
-    }
-    const li = line.match(/^\s*(?:[-*]|\d+\.)\s+(.*)$/);
-    if (li) {
-      list.push(li[1]);
-      continue;
-    }
-    flushList();
-    if (!line.trim()) continue;
-    const h = line.match(/^(#{1,4})\s+(.*)$/);
-    if (h) blocks.push(<h4 key={blocks.length}>{inline(h[2], onCite)}</h4>);
-    else blocks.push(<p key={blocks.length}>{inline(line, onCite)}</p>);
-  }
-  flushList();
-  if (code) blocks.push(<pre key={blocks.length}><code>{(code as string[]).join("\n")}</code></pre>);
-  return <div className="markdown" dir="auto">{blocks}</div>;
+  return (
+    <div className="codeblock" dir="ltr">
+      <div className="codeblock-bar">
+        <span>{lang || "code"}</span>
+        <button onClick={copy} title="Copy">
+          {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre>
+        <code>{children}</code>
+      </pre>
+    </div>
+  );
+}
+
+/**
+ * Safe Markdown renderer (GFM tables, lists, code blocks with copy button).
+ * Citations like [1] become clickable chips when `onCite` is given.
+ */
+export default function Markdown({ text, onCite }: { text: string; onCite?: (n: number) => void }) {
+  const src = onCite ? text.replace(/\[(\d{1,2})\](?!\()/g, "[$1](#cite-$1)") : text;
+  return (
+    <div className="markdown" dir="auto">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a({ href, children }) {
+            const m = href?.match(/^#cite-(\d+)$/);
+            if (m && onCite) {
+              return (
+                <button className="cite" onClick={() => onCite(Number(m[1]))}>
+                  {m[1]}
+                </button>
+              );
+            }
+            return (
+              <a href={href} target="_blank" rel="noreferrer">
+                {children}
+              </a>
+            );
+          },
+          code({ className, children }) {
+            const content = String(children ?? "");
+            const lang = /language-(\w+)/.exec(className || "")?.[1];
+            if (lang || content.includes("\n")) return <CodeBlock lang={lang}>{content.replace(/\n$/, "")}</CodeBlock>;
+            return <code className="inline">{children as ReactNode}</code>;
+          },
+          pre({ children }) {
+            return <>{children}</>;
+          },
+          table({ children }) {
+            return (
+              <div className="table-wrap">
+                <table className="table">{children}</table>
+              </div>
+            );
+          },
+        }}
+      >
+        {src}
+      </ReactMarkdown>
+    </div>
+  );
 }
