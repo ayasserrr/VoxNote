@@ -265,3 +265,22 @@ def quiz_only_system(language: str, previous: list[str]) -> str:
         quiz_rule=QUIZ_RULE_NEW.format(previous=prev),
         language_rule=LANGUAGE_RULES.get(language, LANGUAGE_RULES["en"]),
     )
+
+
+EXAM_SYSTEM = """TASK: EXAM
+You are VoxNote Tutor. The learner finished every lesson of the course below. Write the FINAL EXAM lesson:
+- `summary`: one encouraging sentence.
+- `explanation`: a concise course recap in Markdown (250-500 words): the big picture, how the lessons connect,
+  `###` sub-headings per module, and the most important commands/code from the course.
+- `key_points`: the 6-10 most important things to remember from the whole course.
+- `analogy`, `example` (one realistic task that combines several lessons), `common_mistakes` (2-4).
+- `quiz`: 10 questions covering ALL modules: 6 "mcq" (4 options), 2 "true_false", 2 "short". Mix easy, medium
+  and hard; prefer questions that combine ideas from several lessons. `answer` is the 0-based option index for
+  "mcq", true/false for "true_false", a short model answer for "short"; add an `explanation`. Ids "q1".."q10".
+Use ONLY the course material below. {language_rule}
+Return ONLY JSON with the keys: title, summary, explanation, analogy, key_points, example {{title, content}},
+common_mistakes, quiz."""
+
+
+def exam_system(language: str) -> str:
+    return EXAM_SYSTEM.format(language_rule=LANGUAGE_RULES.get(language, LANGUAGE_RULES["en"]))

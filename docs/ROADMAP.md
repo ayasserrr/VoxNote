@@ -27,9 +27,11 @@ on-demand lessons with analogies and worked examples, quizzes (MCQ / true-false 
 "explain it more simply", lesson tutor, unlocking, XP and progress, dashboard, redesigned UI (sidebar app shell,
 Markdown with code copy, toasts, mobile layout), automatic database migrations
 
+**v2.1 – Complete learning loop:** spaced-repetition review of missed questions (Leitner boxes), final exam + certificate
+per course, personal lesson notes, daily study streak, step-by-step getting-started guide
+
 ## Next
 
-- [ ] Spaced repetition: resurface questions you missed after 1/3/7 days
 - [ ] Playwright-based rendering for JavaScript-only documentation sites
 - [ ] Course export (PDF / Markdown / Anki)
 - [ ] Hybrid retrieval: pgvector + multilingual embeddings (`intfloat/multilingual-e5-small`) combined with BM25 using reciprocal rank fusion

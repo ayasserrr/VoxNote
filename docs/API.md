@@ -63,7 +63,13 @@ Video stages: `waiting, metadata, transcribing, language, extracting, assembling
 | POST | `/lessons/{id}/new-quiz` | new, different questions |
 | POST | `/lessons/{id}/submit` | `{answers: {"q1": 0, "q2": true, "q3": "text"}}` → graded attempt, unlocks the next lesson when passed |
 | POST | `/lessons/{id}/tutor` | `{question}` → tutor answer grounded in the lesson |
-| GET | `/dashboard` | XP, lessons completed, average score, continue-learning, recent items |
+| PUT | `/lessons/{id}/notes` | `{notes}` → save your personal notes for a lesson |
+| GET | `/review?course_id=` | spaced-repetition cards due now (questions you missed, without answers) + counts |
+| POST | `/review/{card_id}/answer` | `{answer}` → graded result, new Leitner box and next due date |
+| GET | `/dashboard` | streak, XP, lessons completed, average score, due reviews, certificates, continue-learning, recent |
+
+Every course ends with a lesson of `kind: "exam"` (course recap + 10-question final exam). It unlocks after the last lesson,
+and passing it sets `stats.certified`.
 
 Lesson status values: `locked`, `available`, `completed`. Quiz question types: `mcq` (answer = option index),
 `true_false` (boolean), `short` (free text, graded by the LLM with keyword-overlap fallback).

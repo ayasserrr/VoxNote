@@ -20,6 +20,7 @@ the free-tier quota up front.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from dataclasses import dataclass
@@ -38,6 +39,7 @@ from app.models import (
     DocPage,
     Lesson,
     QuizAttempt,
+    ReviewItem,
     Status,
     Transcript,
     TranscriptSegment,
@@ -59,6 +61,7 @@ from app.services.prompts import (
     GRADE_SYSTEM,
     TUTOR_SYSTEM,
     curriculum_system,
+    exam_system,
     lesson_system,
     quiz_only_system,
 )
@@ -248,6 +251,28 @@ def _course_language(db: Session, col: Collection, requested: str) -> str:
     return resolve_output_language("auto", detected)
 
 
+def _exam_lesson(course: Course, position: int, module_index: int, status: str = "locked") -> Lesson:
+    return Lesson(
+        course_id=course.id, position=position, module_index=module_index, module_title="Final exam",
+        kind="exam", title="Course recap & final exam",
+        objectives=["Review the whole course", "Prove you master it with a 10-question exam"],
+        estimated_minutes=20, source_refs=[], status=status,
+    )
+
+
+def ensure_exam(db: Session, course: Course) -> None:
+    """Courses created before the final exam existed get one appended."""
+    if course.status != Status.completed.value or not course.lessons:
+        return
+    if any(le.kind == "exam" for le in course.lessons):
+        return
+    last = course.lessons[-1]
+    done = all(le.status == "completed" for le in course.lessons)
+    db.add(_exam_lesson(course, last.position + 1, last.module_index + 1, "available" if done else "locked"))
+    db.commit()
+    db.refresh(course)
+
+
 def build_course(course_id: str) -> None:
     """Background job: create the curriculum and lessons of a course."""
     with session_scope() as db:
@@ -289,6 +314,7 @@ def build_course(course_id: str) -> None:
                     status="available" if pos == 0 else "locked",
                 ))
                 pos += 1
+        db.add(_exam_lesson(course, pos, len(cur.modules)))
         course.status = Status.completed.value
     # Warm up the first lesson so the learner can start immediately.
     from app.workers.queue import enqueue_lesson
@@ -360,6 +386,9 @@ def generate_lesson(lesson_id: str, *, simpler: bool = False, force: bool = Fals
             sources = lesson_sources_text(db, lesson.source_refs or [])
             simplicity = lesson.simplicity + (1 if simpler else 0)
             level, language = course.level, course.language
+            is_exam = lesson.kind == "exam"
+            if is_exam:
+                exam_user = _exam_material(db, course)
             neighbours = db.scalars(
                 select(Lesson.title).where(Lesson.course_id == course.id,
                                            Lesson.position.in_([lesson.position - 1, lesson.position + 1]))
@@ -372,7 +401,11 @@ def generate_lesson(lesson_id: str, *, simpler: bool = False, force: bool = Fals
                 f"SOURCE MATERIAL:\n{sources or '(no source text available - teach from the title only)'}"
             )
         llm = LLMClient()
-        content = llm.structured(lesson_system(level, language, simplicity), user, LessonContent, max_tokens=4096)
+        if is_exam:
+            content = llm.structured(exam_system(language), exam_user, LessonContent, max_tokens=6000)
+        else:
+            content = llm.structured(lesson_system(level, language, simplicity), user, LessonContent,
+                                     max_tokens=4096)
         if not content.explanation.strip():
             raise ValueError("the model returned an empty explanation")
         quiz = content.quiz or _fallback_quiz(content)
@@ -390,6 +423,25 @@ def generate_lesson(lesson_id: str, *, simpler: bool = False, force: bool = Fals
     except Exception:
         _release(lesson_id)
         raise
+
+
+def _exam_material(db: Session, course: Course) -> str:
+    """Condensed view of the whole course for the final exam (lesson summaries + key points)."""
+    parts = [f'Course: "{course.title}"\n{course.description}\n']
+    per = max(20000 // max(len(course.lessons), 1), 300)
+    for le in course.lessons:
+        if le.kind == "exam":
+            continue
+        c = le.content or {}
+        if c:
+            body = f"{c.get('summary', '')}\nKey points: " + "; ".join(c.get("key_points", []))
+            ex = (c.get("example") or {}).get("content", "")
+            body += f"\nExample: {ex[:400]}" if ex else ""
+        else:
+            sources = lesson_sources_text(db, le.source_refs or [])[:per]
+            body = "Objectives: " + "; ".join(le.objectives) + "\n" + sources
+        parts.append(f"## Module: {le.module_title}\n### Lesson {le.position + 1}: {le.title}\n{body}"[:per])
+    return "\n\n".join(parts)
 
 
 def prefetch_lesson(lesson_id: str) -> None:
@@ -522,10 +574,103 @@ def submit(db: Session, lesson: Lesson, answers: dict[str, Any]) -> QuizAttempt:
                                              Lesson.position == lesson.position + 1))
         if nxt and nxt.status == "locked":
             nxt.status = "available"
+    _schedule_mistakes(db, lesson, results)
     lesson.course.updated_at = now()
     db.commit()
     db.refresh(attempt)
     return attempt
+
+
+# ------------------------------------------------------- spaced repetition
+# Leitner boxes: a wrong answer goes to box 0 (due again soon); each correct review moves the card
+# up one box and pushes the next review further out. Box 5 = mastered.
+REVIEW_INTERVALS = {0: timedelta(minutes=10), 1: timedelta(days=1), 2: timedelta(days=3),
+                    3: timedelta(days=7), 4: timedelta(days=16)}
+MASTERED_BOX = 5
+
+
+def _question_key(q: dict[str, Any]) -> str:
+    return hashlib.sha1(f"{q.get('type')}|{q.get('question', '').strip().lower()}".encode()).hexdigest()
+
+
+def _schedule_mistakes(db: Session, lesson: Lesson, results: list[dict[str, Any]]) -> None:
+    quiz = {q["id"]: q for q in lesson.quiz or []}
+    for r in results:
+        if r.get("correct") or r["id"] not in quiz:
+            continue
+        q = quiz[r["id"]]
+        key = _question_key(q)
+        item = db.scalar(select(ReviewItem).where(ReviewItem.lesson_id == lesson.id, ReviewItem.question_key == key))
+        if item is None:
+            db.add(ReviewItem(user_id=lesson.course.user_id, course_id=lesson.course_id, lesson_id=lesson.id,
+                              question_key=key, question=q, box=0, due_at=now()))
+        else:
+            item.box, item.mastered, item.due_at = 0, False, now()
+
+
+def _aware(dt: datetime) -> datetime:
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
+def review_queue(db: Session, user_id: str, course_id: str | None = None, limit: int = 20
+                 ) -> tuple[list[ReviewItem], dict[str, int]]:
+    base = select(ReviewItem).where(ReviewItem.user_id == user_id)
+    if course_id:
+        base = base.where(ReviewItem.course_id == course_id)
+    items = db.scalars(base).all()
+    t = now()
+    due = sorted([i for i in items if not i.mastered and _aware(i.due_at) <= t], key=lambda i: (i.box, i.due_at))
+    upcoming = [i for i in items if not i.mastered and _aware(i.due_at) > t]
+    stats = {"due": len(due), "upcoming": len(upcoming), "mastered": sum(1 for i in items if i.mastered),
+             "total": len(items)}
+    return due[:limit], stats
+
+
+def public_review(item: ReviewItem) -> dict[str, Any]:
+    q = item.question or {}
+    return {
+        "id": item.id, "box": item.box, "reviews": item.reviews, "course_id": item.course_id,
+        "course_title": item.course.title if item.course else "", "lesson_id": item.lesson_id,
+        "lesson_title": item.lesson.title if item.lesson else "",
+        "question": {k: q.get(k) for k in ("id", "type", "question", "options", "difficulty")},
+    }
+
+
+def answer_review(db: Session, item: ReviewItem, answer: Any) -> dict[str, Any]:
+    q = dict(item.question)
+    results, score = grade([q], {q["id"]: answer})
+    r = results[0]
+    item.reviews += 1
+    item.last_reviewed_at = now()
+    if r["correct"]:
+        item.correct_count += 1
+        item.box = min(item.box + 1, MASTERED_BOX)
+        item.mastered = item.box >= MASTERED_BOX
+        item.due_at = now() + REVIEW_INTERVALS.get(item.box, timedelta(days=30))
+    else:
+        item.box = 0
+        item.due_at = now() + REVIEW_INTERVALS[0]
+    db.commit()
+    return {"result": r, "box": item.box, "mastered": item.mastered, "next_due_at": item.due_at}
+
+
+def study_streak(db: Session, user_id: str) -> int:
+    """Consecutive days (ending today or yesterday) with at least one quiz or review."""
+    attempts = db.scalars(
+        select(QuizAttempt.created_at).join(Lesson).join(Course).where(Course.user_id == user_id)).all()
+    reviews = db.scalars(select(ReviewItem.last_reviewed_at).where(
+        ReviewItem.user_id == user_id, ReviewItem.last_reviewed_at.is_not(None))).all()
+    days = {_aware(d).date() for d in [*attempts, *reviews] if d}
+    if not days:
+        return 0
+    day = now().date()
+    if day not in days:
+        day -= timedelta(days=1)
+    streak = 0
+    while day in days:
+        streak += 1
+        day -= timedelta(days=1)
+    return streak
 
 
 # ------------------------------------------------------------------- tutor
@@ -544,16 +689,23 @@ def tutor_answer(db: Session, lesson: Lesson, question: str) -> tuple[str, LLMCl
 
 # ------------------------------------------------------------------ stats
 def course_progress(course: Course) -> dict[str, Any]:
-    lessons = course.lessons
+    exam = next((le for le in course.lessons if le.kind == "exam"), None)
+    lessons = [le for le in course.lessons if le.kind != "exam"]
     done = [le for le in lessons if le.status == "completed"]
     scores = [le.best_score for le in lessons if le.best_score is not None]
-    nxt = next((le for le in lessons if le.status != "completed"), None)
+    nxt = next((le for le in course.lessons if le.status != "completed"), None)
     return {
         "lesson_count": len(lessons),
         "completed_count": len(done),
         "progress": round(len(done) / len(lessons), 3) if lessons else 0.0,
         "average_score": round(sum(scores) / len(scores), 3) if scores else None,
-        "xp": int(sum((le.best_score or 0) * 100 for le in done)),
+        "xp": int(sum((le.best_score or 0) * 100 for le in done))
+        + (int((exam.best_score or 0) * 300) if exam and exam.status == "completed" else 0),
+        "exam_lesson_id": exam.id if exam else None,
+        "exam_status": exam.status if exam else None,
+        "exam_score": exam.best_score if exam else None,
+        "certified": bool(exam and exam.status == "completed"),
+        "certified_at": exam.completed_at if exam and exam.status == "completed" else None,
         "next_lesson_id": nxt.id if nxt else None,
         "next_lesson_title": nxt.title if nxt else None,
         "minutes_total": sum(le.estimated_minutes for le in lessons),

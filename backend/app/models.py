@@ -311,6 +311,7 @@ class Lesson(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)  # global order in the course
     module_index: Mapped[int] = mapped_column(Integer, default=0)
     module_title: Mapped[str] = mapped_column(String(500), default="")
+    kind: Mapped[str] = mapped_column(String(16), default="lesson")  # lesson | exam (final course exam)
     title: Mapped[str] = mapped_column(String(500))
     objectives: Mapped[list] = mapped_column(JSON, default=list)
     estimated_minutes: Mapped[int] = mapped_column(Integer, default=10)
@@ -323,6 +324,7 @@ class Lesson(Base):
     best_score: Mapped[float | None] = mapped_column(Float)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(Text)  # the learner's personal notes
 
     course: Mapped[Course] = relationship(back_populates="lessons")
     quiz_attempts: Mapped[list[QuizAttempt]] = relationship(
@@ -342,3 +344,26 @@ class QuizAttempt(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     lesson: Mapped[Lesson] = relationship(back_populates="quiz_attempts")
+
+
+class ReviewItem(Base):
+    """A quiz question the learner got wrong, scheduled for spaced repetition (Leitner boxes)."""
+
+    __tablename__ = "review_items"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    course_id: Mapped[str] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
+    lesson_id: Mapped[str] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"), index=True)
+    question_key: Mapped[str] = mapped_column(String(40), index=True)  # hash of the question text
+    question: Mapped[dict] = mapped_column(JSON)  # full question incl. answer + explanation
+    box: Mapped[int] = mapped_column(Integer, default=0)  # 0..5, 5 = mastered
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    reviews: Mapped[int] = mapped_column(Integer, default=0)
+    correct_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    mastered: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    lesson: Mapped[Lesson] = relationship()
+    course: Mapped[Course] = relationship()

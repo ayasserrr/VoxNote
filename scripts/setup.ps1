@@ -6,5 +6,4 @@ python -m venv backend\.venv
 backend\.venv\Scripts\python -m pip install --upgrade pip
 backend\.venv\Scripts\pip install -r backend\requirements-dev.txt
 Push-Location frontend; npm install; Pop-Location
-Write-Host "Done. Start the API:  cd backend; .venv\Scripts\uvicorn app.main:app --reload --port 8000"
-Write-Host "Start the UI (new terminal):  cd frontend; npm run dev   ->  http://localhost:5173"
+Write-Host "Done. Start everything with:  ./scripts/dev.ps1   ->  http://localhost:5173"

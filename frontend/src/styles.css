@@ -591,3 +591,46 @@ details summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; marg
   .result-hero .row { justify-content: center; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* ------------------------------------------- review, exam, notes, certificate */
+.nav-badge { margin-inline-start: auto; background: var(--err); color: #fff; font-size: 0.7rem; font-weight: 700; border-radius: 999px; padding: 0.05rem 0.45rem; }
+.stats-grid.three { grid-template-columns: repeat(3, 1fr); margin: 0 0 1rem; }
+.review-banner { display: flex; align-items: center; gap: 1rem; margin-top: 1rem; padding: 1rem 1.2rem; border-radius: 16px; background: var(--amber-soft); color: var(--ink); border: 1px solid var(--border); }
+.review-banner:hover { text-decoration: none; box-shadow: var(--shadow); }
+.review-banner > svg { color: var(--amber); }
+.review-card { padding: 1.6rem; }
+.review-card h2 { font-size: 1.2rem; margin: 1rem 0; }
+.review-card h2 .markdown { font-size: inherit; font-weight: 650; }
+.review-meta { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; }
+.review-progress { height: 4px; background: var(--surface-3); border-radius: 999px; overflow: hidden; margin-top: 0.7rem; }
+.review-progress div { height: 100%; background: var(--grad); transition: width 0.3s; }
+.option.right { border-color: var(--ok); background: var(--ok-soft); }
+.option.wrong { border-color: var(--err); background: var(--err-soft); }
+.option:disabled { cursor: default; }
+.review-result { margin-top: 1rem; padding: 1rem; border-radius: 12px; display: flex; flex-direction: column; gap: 0.45rem; }
+.review-result strong:first-child { display: flex; gap: 0.4rem; align-items: center; }
+.review-result.ok { background: var(--ok-soft); }
+.review-result.ok strong:first-child { color: var(--ok); }
+.review-result.bad { background: var(--err-soft); }
+.review-result.bad strong:first-child { color: var(--err); }
+.review-result .markdown { display: inline; font-size: inherit; }
+.review-result .markdown p { display: inline; margin: 0; }
+.review-done { padding: 2.5rem; }
+.review-done svg { color: var(--accent); }
+.box-0 { background: var(--err-soft); color: var(--err); }
+.box-1, .box-2 { background: var(--warn-soft); color: var(--warn); }
+.box-3, .box-4 { background: var(--blue-soft); color: var(--blue); }
+.box-5 { background: var(--ok-soft); color: var(--ok); }
+.exam-badge { display: inline-flex; align-items: center; gap: 0.35rem; margin-top: 0.5rem; padding: 0.25rem 0.7rem; border-radius: 999px; background: var(--amber-soft); color: var(--amber); font-size: 0.8rem; font-weight: 650; }
+.exam-row { background: linear-gradient(90deg, var(--amber-soft), transparent); }
+.exam-row .lesson-icon { color: var(--amber) !important; }
+.certificate { display: flex; gap: 1.3rem; align-items: center; padding: 1.6rem 1.8rem; margin-bottom: 1rem; border-radius: 20px; color: #fff;
+  background: linear-gradient(135deg, #b45309, #f59e0b 60%, #fcd34d); box-shadow: 0 14px 34px rgba(217, 119, 6, 0.3); }
+.certificate h2 { margin: 0.2rem 0 0.4rem; font-size: 1.4rem; }
+.certificate p { margin: 0; opacity: 0.95; }
+.cert-eyebrow { text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.72rem; font-weight: 700; opacity: 0.9; }
+.notes { margin: 1.4rem 0 0.4rem; border: 1px dashed var(--border); border-radius: 14px; padding: 0.7rem 0.9rem; }
+.notes-toggle { display: flex; align-items: center; gap: 0.5rem; width: 100%; background: none; border: none; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; padding: 0.2rem 0; }
+.notes-toggle .muted { margin-inline-start: auto; }
+.notes textarea { margin-top: 0.6rem; }
+@media (max-width: 860px) { .stats-grid.three { grid-template-columns: 1fr 1fr 1fr; } .certificate { flex-direction: column; text-align: center; } }

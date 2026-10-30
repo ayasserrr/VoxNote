@@ -25,8 +25,10 @@ export default function CourseCard({ c }: { c: CourseSummary }) {
       <div className="course-card-foot">
         {!ready ? (
           <StatusBadge status={c.status} stage="structuring" />
+        ) : s.certified ? (
+          <span className="badge badge-completed">🏆 Certified · exam {Math.round((s.exam_score ?? 0) * 100)}%</span>
         ) : done ? (
-          <span className="badge badge-completed">Completed 🎉</span>
+          <span className="continue"><PlayCircle size={16} /> Final exam unlocked</span>
         ) : (
           <span className="continue">
             <PlayCircle size={16} /> {s.completed_count ? "Continue" : "Start"}: <span dir="auto">{s.next_lesson_title}</span>

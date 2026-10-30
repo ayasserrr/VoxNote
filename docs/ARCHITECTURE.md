@@ -189,6 +189,12 @@ a multi-pass build.
   feedback). If the LLM is unavailable, a keyword-overlap score is used instead. A score ≥ `QUIZ_PASS_SCORE` completes the lesson and unlocks
   the next one; best score and attempts are kept, and XP = Σ best score × 100 over completed lessons.
 - The tutor answers with the lesson text plus its sources as context.
+- **Spaced repetition:** each missed question becomes a `ReviewItem` (Leitner box 0, due now). A correct review moves it up a box
+  (due again after 1 / 3 / 7 / 16 days; box 5 = mastered). A wrong review sends it back to box 0 (due again after 10 minutes).
+- **Final exam:** every course ends with a `kind="exam"` lesson whose prompt sees the whole course (lesson summaries, key points
+  and examples, or source excerpts for lessons not yet generated). It produces a recap plus 10 questions across all modules.
+  Passing it certifies the course; certified courses earn 300 × exam score extra XP.
+- **Streak:** the number of consecutive days with at least one quiz attempt or review.
 - Search and *Ask* index documentation pages as heading-aware passages next to the video transcripts.
 
 ## 10. Security

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, BookText, Brain, FileText, GraduationCap, ListChecks, Sparkles, Trophy, Youtube } from "lucide-react";
+import { ArrowRight, Award, BookText, Brain, Flame, GraduationCap, ListChecks, Sparkles, Trophy, Youtube } from "lucide-react";
 import { api, isYouTubeUrl } from "../api";
 import { useAuth } from "../auth";
 import CourseCard from "../components/CourseCard";
@@ -85,11 +85,22 @@ export default function DashboardPage() {
       ) : (
         <>
           <section className="stats-grid">
-            <Stat icon={<Trophy size={20} />} label="XP earned" value={d.xp} tone="amber" />
-            <Stat icon={<ListChecks size={20} />} label="Lessons completed" value={d.lessons_completed} tone="green" />
-            <Stat icon={<Brain size={20} />} label="Average quiz score" value={pct(d.average_score)} tone="violet" />
-            <Stat icon={<FileText size={20} />} label="Documents generated" value={d.documents} tone="blue" />
+            <Stat icon={<Flame size={20} />} label={d.streak_days === 1 ? "Day streak" : "Days streak"} value={d.streak_days} tone="amber" />
+            <Stat icon={<Trophy size={20} />} label="XP earned" value={d.xp} tone="violet" />
+            <Stat icon={<ListChecks size={20} />} label={`Lessons done · avg ${pct(d.average_score)}`} value={d.lessons_completed} tone="green" />
+            <Stat icon={<Award size={20} />} label="Certificates" value={d.certificates} tone="blue" />
           </section>
+
+          {d.due_reviews > 0 && (
+            <Link to="/review" className="review-banner">
+              <Brain size={22} />
+              <div className="grow">
+                <strong>{d.due_reviews} question{d.due_reviews === 1 ? "" : "s"} ready for review</strong>
+                <div className="small">Practising your mistakes at the right time is the fastest way to remember them.</div>
+              </div>
+              <span className="btn primary sm">Start review <ArrowRight size={14} /></span>
+            </Link>
+          )}
 
           <section>
             <div className="section-head">

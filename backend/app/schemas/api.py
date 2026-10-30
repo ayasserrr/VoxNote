@@ -230,6 +230,7 @@ class LessonSummary(ORM):
     position: int
     module_index: int
     module_title: str
+    kind: str = "lesson"
     title: str
     objectives: list[str]
     estimated_minutes: int
@@ -248,6 +249,11 @@ class CourseProgress(BaseModel):
     next_lesson_id: str | None = None
     next_lesson_title: str | None = None
     minutes_total: int = 0
+    exam_lesson_id: str | None = None
+    exam_status: str | None = None
+    exam_score: float | None = None
+    certified: bool = False
+    certified_at: datetime | None = None
 
 
 class CourseSummary(ORM):
@@ -305,6 +311,7 @@ class LessonOut(LessonSummary):
     next_lesson_id: str | None
     last_attempt: AttemptOut | None = None
     pass_score: float
+    notes: str | None = None
 
 
 class SubmitOut(BaseModel):
@@ -330,5 +337,50 @@ class DashboardOut(BaseModel):
     quizzes_taken: int
     average_score: float | None
     xp: int
+    streak_days: int = 0
+    due_reviews: int = 0
+    certificates: int = 0
     continue_learning: list[CourseSummary]
     recent: list[CollectionSummary]
+
+
+class NotesIn(BaseModel):
+    notes: str = Field(default="", max_length=20000)
+
+
+class ReviewQuestion(BaseModel):
+    id: str
+    type: str
+    question: str
+    options: list[str] | None = None
+    difficulty: str | None = None
+
+
+class ReviewCard(BaseModel):
+    id: str
+    box: int
+    reviews: int
+    course_id: str
+    course_title: str
+    lesson_id: str
+    lesson_title: str
+    question: ReviewQuestion
+
+
+class ReviewQueue(BaseModel):
+    cards: list[ReviewCard]
+    due: int
+    upcoming: int
+    mastered: int
+    total: int
+
+
+class ReviewAnswerIn(BaseModel):
+    answer: Any = None
+
+
+class ReviewAnswerOut(BaseModel):
+    result: dict[str, Any]
+    box: int
+    mastered: bool
+    next_due_at: datetime

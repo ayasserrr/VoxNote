@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, BookText, CheckCircle2, Circle, Clock, ExternalLink, Lock, PlayCircle, RotateCcw, Target, Trash2, Trophy, Youtube } from "lucide-react";
+import { ArrowLeft, Award, Brain, BookText, CheckCircle2, Circle, Clock, ExternalLink, Lock, PlayCircle, RotateCcw, Target, Trash2, Trophy, Youtube } from "lucide-react";
 import { api } from "../api";
 import { StatusBadge } from "../components/StatusBadge";
 import { useToast } from "../components/Toast";
@@ -39,6 +39,7 @@ export default function CoursePage() {
   const building = c.status === "queued" || c.status === "processing";
   const s = c.stats;
   const allDone = s.lesson_count > 0 && s.completed_count === s.lesson_count;
+  const ringValue = (s.completed_count + (s.certified ? 1 : 0)) / Math.max(s.lesson_count + (s.exam_lesson_id ? 1 : 0), 1);
 
   return (
     <div>
@@ -59,13 +60,32 @@ export default function CoursePage() {
                 <PlayCircle size={18} /> {s.completed_count ? "Continue" : "Start learning"}
               </button>
             )}
-            {allDone && <span className="badge badge-completed big"><Trophy size={14} /> Course completed!</span>}
+            {allDone && !s.certified && s.exam_lesson_id && (
+              <button className="btn primary lg" onClick={() => nav(`/learn/${c.id}/lessons/${s.exam_lesson_id}`)}>
+                <Trophy size={18} /> Take the final exam
+              </button>
+            )}
+            <Link className="btn ghost" to={`/review?course=${c.id}`}><Brain size={14} /> Review mistakes</Link>
             <Link className="btn ghost" to={`/collections/${c.collection_id}`}>Source material</Link>
             {c.source_url && <a className="btn ghost" href={c.source_url} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Original</a>}
           </div>
         </div>
-        <ProgressRing value={s.progress} size={120} stroke={10} label={<><strong>{Math.round(s.progress * 100)}%</strong><small>complete</small></>} />
+        <ProgressRing value={ringValue} size={120} stroke={10} label={<><strong>{Math.round(ringValue * 100)}%</strong><small>complete</small></>} />
       </section>
+
+      {s.certified && (
+        <section className="certificate">
+          <Award size={44} />
+          <div>
+            <div className="cert-eyebrow">Certificate of completion</div>
+            <h2 dir="auto">{c.title}</h2>
+            <p>
+              Completed all {s.lesson_count} lessons and passed the final exam with <strong>{pct(s.exam_score)}</strong>
+              {s.certified_at ? ` on ${new Date(s.certified_at).toLocaleDateString()}` : ""}. Average lesson score {pct(s.average_score)} · {s.xp} XP.
+            </p>
+          </div>
+        </section>
+      )}
 
       {building ? (
         <div className="card center building">
@@ -84,12 +104,12 @@ export default function CoursePage() {
                 <ol className="lessons">
                   {m.lessons.map((l) => (
                     <li key={l.id}>
-                      <Link to={`/learn/${c.id}/lessons/${l.id}`} className={`lesson-row st-${l.status}`}>
+                      <Link to={`/learn/${c.id}/lessons/${l.id}`} className={`lesson-row st-${l.status} ${l.kind === "exam" ? "exam-row" : ""}`}>
                         <span className="lesson-icon">
-                          {l.status === "completed" ? <CheckCircle2 size={20} /> : l.status === "available" ? <PlayCircle size={20} /> : <Lock size={18} />}
+                          {l.kind === "exam" ? <Trophy size={20} /> : l.status === "completed" ? <CheckCircle2 size={20} /> : l.status === "available" ? <PlayCircle size={20} /> : <Lock size={18} />}
                         </span>
                         <div className="grow">
-                          <div className="lesson-title" dir="auto">{l.position + 1}. {l.title}</div>
+                          <div className="lesson-title" dir="auto">{l.kind === "exam" ? l.title : `${l.position + 1}. ${l.title}`}</div>
                           {l.objectives.length > 0 && <div className="muted small" dir="auto">{l.objectives.slice(0, 2).join(" · ")}</div>}
                         </div>
                         <span className="muted small nowrap"><Clock size={12} /> {l.estimated_minutes} min</span>

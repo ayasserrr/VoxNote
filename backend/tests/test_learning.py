@@ -108,9 +108,70 @@ def test_course_from_video(auth_client):
     assert course["status"] == "completed" and course["lessons"]
     lesson = c.post(f"/api/lessons/{course['lessons'][0]['id']}/prepare").json()
     assert lesson["sources"][0]["kind"] == "video" and "youtube.com" in lesson["sources"][0]["url"]
-    assert c.get("/api/courses").json()[0]["stats"]["lesson_count"] == len(course["lessons"])
+    regular = [le for le in course["lessons"] if le["kind"] == "lesson"]
+    assert c.get("/api/courses").json()[0]["stats"]["lesson_count"] == len(regular)
+    assert course["lessons"][-1]["kind"] == "exam"
 
 
 def test_docs_rejects_youtube_and_bad_urls(auth_client):
     assert auth_client.post("/api/collections/docs", json={"url": "https://youtu.be/ENvideo0001"}).status_code == 400
     assert auth_client.post("/api/collections/docs", json={"url": "notaurl"}).status_code == 400
+
+
+def _docs_course(c):
+    r = c.post("/api/collections/docs", json={"url": "https://minilib.dev/docs/", "max_pages": 3})
+    col = c.get(f"/api/collections/{r.json()['id']}").json()
+    return c.get(f"/api/courses/{col['course_id']}").json()
+
+
+def test_mistakes_go_to_spaced_repetition_review(auth_client):
+    c = auth_client
+    course = _docs_course(c)
+    first = course["lessons"][0]
+    c.post(f"/api/lessons/{first['id']}/prepare")
+    c.post(f"/api/lessons/{first['id']}/submit", json={"answers": {"q1": 3, "q2": False}})  # all wrong
+    q = c.get("/api/review").json()
+    assert q["due"] == 3 and len(q["cards"]) == 3
+    assert all("answer" not in card["question"] for card in q["cards"])
+    tf = next(card for card in q["cards"] if card["question"]["type"] == "true_false")
+    res = c.post(f"/api/review/{tf['id']}/answer", json={"answer": True}).json()
+    assert res["result"]["correct"] and res["box"] == 1 and not res["mastered"]
+    mcq = next(card for card in q["cards"] if card["question"]["type"] == "mcq")
+    res = c.post(f"/api/review/{mcq['id']}/answer", json={"answer": 2}).json()
+    assert not res["result"]["correct"] and res["box"] == 0 and res["result"]["correct_answer"]
+    q2 = c.get("/api/review").json()
+    assert q2["due"] == 1 and q2["upcoming"] == 2  # answered cards are scheduled for later
+    dash = c.get("/api/dashboard").json()
+    assert dash["due_reviews"] == 1 and dash["streak_days"] == 1
+
+
+def test_final_exam_certifies_course_and_notes(auth_client):
+    c = auth_client
+    course = _docs_course(c)
+    lessons = [le for le in course["lessons"] if le["kind"] == "lesson"]
+    exam = course["lessons"][-1]
+    assert exam["kind"] == "exam" and exam["status"] == "locked"
+    assert course["stats"]["lesson_count"] == len(lessons) and course["stats"]["exam_status"] == "locked"
+
+    saved = c.put(f"/api/lessons/{lessons[0]['id']}/notes", json={"notes": "pip install minilib"}).json()
+    assert saved["id"] == lessons[0]["id"]
+    assert c.get(f"/api/lessons/{lessons[0]['id']}").json()["notes"] == "pip install minilib"
+
+    for le in lessons:
+        lesson = c.post(f"/api/lessons/{le['id']}/prepare").json()
+        ref = next(q for q in lesson["quiz"] if q["type"] == "short")
+        first = c.post(f"/api/lessons/{le['id']}/submit", json={"answers": {}}).json()
+        model = next(r for r in first["attempt"]["results"] if r["id"] == ref["id"])["correct_answer"]
+        assert c.post(f"/api/lessons/{le['id']}/submit",
+                      json={"answers": {"q1": 0, "q2": True, "q3": model}}).json()["attempt"]["passed"]
+
+    exam_lesson = c.post(f"/api/lessons/{exam['id']}/prepare").json()
+    assert exam_lesson["status"] == "available" and exam_lesson["kind"] == "exam"
+    assert exam_lesson["content"]["explanation"] and exam_lesson["quiz"]
+    first = c.post(f"/api/lessons/{exam['id']}/submit", json={"answers": {}}).json()
+    model = first["attempt"]["results"][2]["correct_answer"]
+    done = c.post(f"/api/lessons/{exam['id']}/submit", json={"answers": {"q1": 0, "q2": True, "q3": model}}).json()
+    assert done["attempt"]["passed"] and done["course_completed"]
+    stats = c.get(f"/api/courses/{course['id']}").json()["stats"]
+    assert stats["certified"] and stats["completed_count"] == stats["lesson_count"] and stats["certified_at"]
+    assert c.get("/api/dashboard").json()["certificates"] == 1

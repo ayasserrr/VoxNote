@@ -10,6 +10,8 @@ import type {
   Level,
   LogEntry,
   PageDetail,
+  ReviewAnswer,
+  ReviewQueue,
   SubmitResult,
   ProcessingSettings,
   SearchHit,
@@ -116,6 +118,11 @@ export const api = {
   newQuiz: (id: string) => request<Lesson>(`/lessons/${id}/new-quiz`, { method: "POST" }),
   submitQuiz: (id: string, answers: Record<string, unknown>) =>
     request<SubmitResult>(`/lessons/${id}/submit`, { method: "POST", body: JSON.stringify({ answers }) }),
+  saveNotes: (id: string, notes: string) =>
+    request<unknown>(`/lessons/${id}/notes`, { method: "PUT", body: JSON.stringify({ notes }) }),
+  review: (courseId?: string) => request<ReviewQueue>(`/review${courseId ? `?course_id=${courseId}` : ""}`),
+  answerReview: (id: string, answer: unknown) =>
+    request<ReviewAnswer>(`/review/${id}/answer`, { method: "POST", body: JSON.stringify({ answer }) }),
   tutor: (id: string, question: string) =>
     request<{ answer: string; provider: string | null; model: string | null }>(`/lessons/${id}/tutor`, {
       method: "POST",

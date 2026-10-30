@@ -229,6 +229,11 @@ export interface CourseStats {
   next_lesson_id: string | null;
   next_lesson_title: string | null;
   minutes_total: number;
+  exam_lesson_id: string | null;
+  exam_status: LessonStatus | null;
+  exam_score: number | null;
+  certified: boolean;
+  certified_at: string | null;
 }
 
 export interface CourseSummary {
@@ -256,6 +261,7 @@ export interface LessonSummary {
   position: number;
   module_index: number;
   module_title: string;
+  kind: "lesson" | "exam";
   title: string;
   objectives: string[];
   estimated_minutes: number;
@@ -332,6 +338,7 @@ export interface Lesson extends LessonSummary {
   next_lesson_id: string | null;
   last_attempt: Attempt | null;
   pass_score: number;
+  notes: string | null;
 }
 
 export interface SubmitResult {
@@ -351,6 +358,35 @@ export interface Dashboard {
   quizzes_taken: number;
   average_score: number | null;
   xp: number;
+  streak_days: number;
+  due_reviews: number;
+  certificates: number;
   continue_learning: CourseSummary[];
   recent: CollectionSummary[];
+}
+
+export interface ReviewCard {
+  id: string;
+  box: number;
+  reviews: number;
+  course_id: string;
+  course_title: string;
+  lesson_id: string;
+  lesson_title: string;
+  question: QuizQuestion;
+}
+
+export interface ReviewQueue {
+  cards: ReviewCard[];
+  due: number;
+  upcoming: number;
+  mastered: number;
+  total: number;
+}
+
+export interface ReviewAnswer {
+  result: QuizResult;
+  box: number;
+  mastered: boolean;
+  next_due_at: string;
 }

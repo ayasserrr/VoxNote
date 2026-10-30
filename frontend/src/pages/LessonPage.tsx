@@ -13,12 +13,14 @@ import {
   Lightbulb,
   ListChecks,
   MessageCircle,
+  NotebookPen,
   PartyPopper,
   RefreshCw,
   Send,
   Shuffle,
   Sparkles,
   Target,
+  Trophy,
   XCircle,
 } from "lucide-react";
 import { api } from "../api";
@@ -181,6 +183,7 @@ export default function LessonPage() {
               {lesson.module_title} · Lesson {lesson.position + 1} · <Clock size={12} /> {lesson.estimated_minutes} min
               {lesson.status === "completed" && <span className="badge badge-completed"> <CheckCircle2 size={12} /> Completed {pct(lesson.best_score)}</span>}
             </div>
+            {lesson.kind === "exam" && <span className="exam-badge"><Trophy size={14} /> Final exam · pass to earn your course certificate</span>}
             <h1 dir="auto">{lesson.title}</h1>
             {c.summary && <div className="lead"><Markdown text={c.summary} /></div>}
             {lesson.status === "locked" && phase === "learn" && (
@@ -226,6 +229,7 @@ export default function LessonPage() {
                   </div>
                 </div>
               )}
+              <NotesPanel lessonId={lesson.id} initial={lesson.notes ?? ""} />
               {lesson.sources.length > 0 && (
                 <div className="sources-box">
                   <strong>Based on</strong>
@@ -249,7 +253,7 @@ export default function LessonPage() {
                   <MessageCircle size={16} /> Ask the tutor
                 </button>
                 <button className="btn primary lg" disabled={!quiz.length} onClick={() => { setPhase("quiz"); top.current?.scrollIntoView({ behavior: "smooth" }); }}>
-                  I'm ready — test me <ArrowRight size={16} />
+                  {lesson.kind === "exam" ? "Start the final exam" : "I'm ready — test me"} <ArrowRight size={16} />
                 </button>
               </div>
             </>
@@ -394,12 +398,18 @@ function ResultView(props: {
           {a.passed ? (
             <>
               <h2><PartyPopper size={22} /> {courseDone ? "Course completed!" : "Great job — lesson completed!"}</h2>
-              <p>You got {correct} of {a.results.length} right{hasNext ? ". The next lesson is unlocked." : "."}</p>
+              <p>
+                You got {correct} of {a.results.length} right{hasNext ? ". The next lesson is unlocked." : "."}
+                {correct < a.results.length && " The questions you missed were added to your Review."}
+              </p>
             </>
           ) : (
             <>
               <h2>Almost there — let's review</h2>
-              <p>You need {Math.round(passScore * 100)}% to complete this lesson. Read the corrections below, then try again.</p>
+              <p>
+                You need {Math.round(passScore * 100)}% to complete this lesson. Read the corrections below, then try again. The questions you
+                missed were also added to your <Link to="/review">Review</Link> for spaced practice.
+              </p>
             </>
           )}
           <div className="row">
@@ -490,5 +500,41 @@ function TutorPanel({ lessonId, onClose }: { lessonId: string; onClose: () => vo
         <button className="btn primary icon" disabled={busy || !q.trim()} aria-label="Send"><Send size={16} /></button>
       </form>
     </aside>
+  );
+}
+
+/* ----------------------------------------------------------------- notes */
+function NotesPanel({ lessonId, initial }: { lessonId: string; initial: string }) {
+  const [open, setOpen] = useState(!!initial);
+  const [text, setText] = useState(initial);
+  const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    setState("saving");
+    const t = setTimeout(async () => {
+      try {
+        await api.saveNotes(lessonId, text);
+        setState("saved");
+      } catch {
+        setState("idle");
+      }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [text, lessonId]);
+  return (
+    <section className="notes">
+      <button className="notes-toggle" onClick={() => setOpen(!open)}>
+        <NotebookPen size={16} /> My notes {text && !open ? `(${text.split(/\s+/).filter(Boolean).length} words)` : ""}
+        <span className="muted small">{state === "saving" ? "Saving…" : state === "saved" ? "Saved" : ""}</span>
+      </button>
+      {open && (
+        <textarea dir="auto" rows={5} value={text} onChange={(e) => setText(e.target.value)}
+          placeholder="Write what you learned in your own words — explaining it yourself is the best way to remember it." />
+      )}
+    </section>
   );
 }

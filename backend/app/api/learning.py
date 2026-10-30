@@ -18,6 +18,7 @@ from app.models import (
     Document,
     Lesson,
     QuizAttempt,
+    ReviewItem,
     Status,
     User,
     Video,
@@ -32,6 +33,10 @@ from app.schemas.api import (
     LessonOut,
     LessonSource,
     LessonSummary,
+    NotesIn,
+    ReviewAnswerIn,
+    ReviewAnswerOut,
+    ReviewQueue,
     SubmitOut,
     TutorOut,
 )
@@ -111,6 +116,7 @@ def _lesson_out(db: Session, le: Lesson) -> LessonOut:
         next_lesson_id=neighbours.get(le.position + 1),
         last_attempt=AttemptOut.model_validate(last, from_attributes=True) if last else None,
         pass_score=settings.quiz_pass_score,
+        notes=le.notes,
     )
 
 
@@ -160,7 +166,9 @@ def list_courses(user: User = Depends(get_current_user), db: Session = Depends(g
 
 @router.get("/courses/{course_id}", response_model=CourseOut)
 def get_course(course_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return _course_out(_owned_course(course_id, user, db))
+    course = _owned_course(course_id, user, db)
+    learning.ensure_exam(db, course)
+    return _course_out(course)
 
 
 @router.delete("/courses/{course_id}", status_code=204)
@@ -177,6 +185,8 @@ def reset_progress(course_id: str, user: User = Depends(get_current_user), db: S
         le.best_score, le.attempts, le.completed_at = None, 0, None
         for a in list(le.quiz_attempts):
             db.delete(a)
+    for item in db.scalars(select(ReviewItem).where(ReviewItem.course_id == course.id)).all():
+        db.delete(item)
     db.commit()
     db.refresh(course)
     return _course_out(course)
@@ -272,6 +282,34 @@ async def tutor(lesson_id: str, body: TutorQuestion, user: User = Depends(get_cu
     return TutorOut(answer=answer, provider=llm.usage.last_provider, model=llm.usage.last_model)
 
 
+@router.put("/lessons/{lesson_id}/notes", response_model=LessonSummary)
+def save_notes(lesson_id: str, body: NotesIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    le = _owned_lesson(lesson_id, user, db)
+    le.notes = body.notes
+    db.commit()
+    return _lesson_summary(le)
+
+
+# ------------------------------------------------------------------ review
+@router.get("/review", response_model=ReviewQueue)
+def get_review(course_id: str | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Questions you got wrong, due for spaced-repetition review."""
+    if course_id:
+        _owned_course(course_id, user, db)
+    cards, stats = learning.review_queue(db, user.id, course_id)
+    return ReviewQueue(cards=[learning.public_review(c) for c in cards], **stats)
+
+
+@router.post("/review/{item_id}/answer", response_model=ReviewAnswerOut)
+async def answer_review(item_id: str, body: ReviewAnswerIn, user: User = Depends(get_current_user),
+                        db: Session = Depends(get_db)) -> ReviewAnswerOut:
+    item = db.get(ReviewItem, item_id)
+    if not item or item.user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Review card not found")
+    out = await run_in_threadpool(learning.answer_review, db, item, body.answer)
+    return ReviewAnswerOut(**out)
+
+
 # --------------------------------------------------------------- dashboard
 @router.get("/dashboard", response_model=DashboardOut)
 def dashboard(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> DashboardOut:
@@ -287,7 +325,7 @@ def dashboard(user: User = Depends(get_current_user), db: Session = Depends(get_
         .options(selectinload(Course.lessons), selectinload(Course.collection))
         .order_by(func.coalesce(Course.last_opened_at, Course.created_at).desc())
     ).all()
-    lessons = [le for c in courses for le in c.lessons]
+    lessons = [le for c in courses for le in c.lessons if le.kind != "exam"]
     done = [le for le in lessons if le.status == "completed"]
     scores = [le.best_score for le in lessons if le.best_score is not None]
     quizzes = db.scalar(
@@ -299,6 +337,8 @@ def dashboard(user: User = Depends(get_current_user), db: Session = Depends(get_
     pages = db.scalar(select(func.count(DocPage.id)).where(DocPage.collection_id.in_(col_ids))) if col_ids else 0
     in_progress = [c for c in courses if c.status == Status.completed.value
                    and any(le.status != "completed" for le in c.lessons)]
+    _, review_stats = learning.review_queue(db, user.id)
+    progress = [learning.course_progress(c) for c in courses]
     return DashboardOut(
         collections=len(cols),
         videos_processed=videos_done or 0,
@@ -308,7 +348,10 @@ def dashboard(user: User = Depends(get_current_user), db: Session = Depends(get_
         lessons_completed=len(done),
         quizzes_taken=quizzes,
         average_score=round(sum(scores) / len(scores), 3) if scores else None,
-        xp=int(sum((le.best_score or 0) * 100 for le in done)),
+        xp=sum(p["xp"] for p in progress),
+        streak_days=learning.study_streak(db, user.id),
+        due_reviews=review_stats["due"],
+        certificates=sum(1 for p in progress if p["certified"]),
         continue_learning=[_course_summary(c) for c in (in_progress or courses)[:4]],
         recent=[CollectionSummary.model_validate(c, from_attributes=True).model_copy(update=summary_fields(c))
                 for c in cols[:6]],

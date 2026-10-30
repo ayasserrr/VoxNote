@@ -1,12 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { BookOpenCheck, GraduationCap, LayoutDashboard, Library, LogOut, Menu, MessageCircleQuestion, PlusCircle, Settings, X } from "lucide-react";
+import { BookOpenCheck, Brain, GraduationCap, LayoutDashboard, Library, LogOut, Menu, MessageCircleQuestion, PlusCircle, Settings, X } from "lucide-react";
+import { api } from "../api";
 import { useAuth } from "../auth";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/new", label: "New", icon: PlusCircle },
   { to: "/learn", label: "Learning Hub", icon: GraduationCap },
+  { to: "/review", label: "Review", icon: Brain },
   { to: "/library", label: "Library", icon: Library },
   { to: "/ask", label: "Ask", icon: MessageCircleQuestion },
   { to: "/settings", label: "Settings", icon: Settings },
@@ -15,7 +17,11 @@ const NAV = [
 export default function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const [due, setDue] = useState(0);
   const loc = useLocation();
+  useEffect(() => {
+    api.review().then((q) => setDue(q.due)).catch(() => undefined);
+  }, [loc.pathname]);
   useEffect(() => {
     setOpen(false);
   }, [loc.pathname]);
@@ -35,6 +41,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <NavLink key={to} to={to} end={end}>
               <Icon size={18} />
               {label}
+              {to === "/review" && due > 0 && <span className="nav-badge">{due}</span>}
             </NavLink>
           ))}
         </nav>

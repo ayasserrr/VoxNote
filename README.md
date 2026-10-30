@@ -41,7 +41,10 @@ FastAPI · React + TypeScript · PostgreSQL/SQLite · Celery + Redis · Whisper 
 - [Responsible use](#responsible-use)
 - [Roadmap](#roadmap)
 
-More documentation in [`docs/`](docs): [architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) ·
+> **New here? Follow the step-by-step guide: [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)**
+> (install → free key → start → your first course, for Windows, macOS and Linux).
+
+More documentation in [`docs/`](docs): [getting started](docs/GETTING_STARTED.md) · [architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) ·
 [free AI providers](docs/FREE_AI_PROVIDERS.md) · [evaluation](docs/EVALUATION.md) · [roadmap](docs/ROADMAP.md)
 
 ---
@@ -76,8 +79,13 @@ More documentation in [`docs/`](docs): [architecture](docs/ARCHITECTURE.md) · [
   before you submit. *Retry*, or ask for *new questions*.
 - **Stuck?** *Explain it more simply* rewrites the lesson with shorter sentences and an everyday analogy (up to two levels simpler).
   The **tutor** answers your questions using the lesson and its source pages.
-- **Progress.** Lessons unlock as you pass them. The app tracks best scores, attempts, XP and per-course progress, and the dashboard
-  has a *Continue learning* section.
+- **Spaced-repetition review.** Every question you miss goes into **Review**. It comes back after 10 minutes, then after
+  1, 3, 7 and 16 days (Leitner boxes) until you master it. The sidebar shows how many cards are due.
+- **Final exam & certificate.** After the last lesson you get a course recap and a 10-question exam covering all modules.
+  Pass it to earn a certificate of completion.
+- **Personal notes** on every lesson (autosaved), because explaining it in your own words helps you remember.
+- **Progress.** Lessons unlock as you pass them. The app tracks best scores, attempts, XP, your **daily study streak**,
+  certificates and per-course progress, and the dashboard has a *Continue learning* section.
 - **Videos too.** On any processed video or playlist, click **Learn this as a course**. Lessons are built from the video chapters,
   and each source links to the exact moment.
 
@@ -166,6 +174,7 @@ GEMINI_API_KEY=AIza...          # https://aistudio.google.com/apikey
 
 ```powershell
 ./scripts/setup.ps1
+./scripts/dev.ps1
 ```
 
 <details>
@@ -398,12 +407,13 @@ To use Ollama on your host machine from Docker, set `OLLAMA_ENABLED=true`. The c
 ```bash
 make test                     # backend tests + frontend type-check
 # or
-cd backend && pytest -q       # 41 tests, fully offline (mock LLM, stubbed YouTube, fake docs site)
+cd backend && pytest -q       # 43 tests, fully offline (mock LLM, stubbed YouTube, fake docs site)
 cd frontend && npm run build
 ```
 
 The tests cover the documentation crawler (scope, robots.txt, sitemap, page limits, content extraction), the full
-docs → course → lesson → quiz → grading → unlock flow, quiz-schema normalisation and keyword-fallback grading,
+docs → course → lesson → quiz → grading → unlock flow, spaced-repetition review scheduling, the final exam and
+certificate, lesson notes, quiz-schema normalisation and keyword-fallback grading,
 curriculum sanitising, courses built from videos, URL parsing, language detection, chunking, JSON repair, lenient schema validation, concept merging, auth/JWT, Arabic RTL
 line wrapping, PDF generation (English, Arabic and the playlist book), Markdown export, the complete video and playlist pipelines through the API,
 RAG answers and search, failure handling plus single-video retry, and per-user ownership checks.

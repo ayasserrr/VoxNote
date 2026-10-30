@@ -12,6 +12,7 @@ import LessonPage from "./pages/LessonPage";
 import LibraryPage from "./pages/LibraryPage";
 import LoginPage from "./pages/LoginPage";
 import NewPage from "./pages/NewPage";
+import ReviewPage from "./pages/ReviewPage";
 import SettingsPage from "./pages/SettingsPage";
 import VideoPage from "./pages/VideoPage";
 
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="/learn" element={<LearnPage />} />
         <Route path="/learn/:courseId" element={<CoursePage />} />
         <Route path="/learn/:courseId/lessons/:lessonId" element={<LessonPage />} />
+        <Route path="/review" element={<ReviewPage />} />
         <Route path="/library" element={<LibraryPage />} />
         <Route path="/collections/:id" element={<CollectionPage />} />
         <Route path="/collections/:id/pages/:pageId" element={<DocPageView />} />

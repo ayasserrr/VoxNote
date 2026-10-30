@@ -206,6 +206,10 @@ def mock_complete(messages: list[dict[str, str]], json_mode: bool) -> str:
         return json.dumps(_collection(user), ensure_ascii=False)
     if "TASK: CURRICULUM" in system:
         return json.dumps(_curriculum(user), ensure_ascii=False)
+    if "TASK: EXAM" in system:
+        out = _lesson(user)
+        out["title"] = "Final exam"
+        return json.dumps(out, ensure_ascii=False)
     if "TASK: LESSON" in system:
         return json.dumps(_lesson(user), ensure_ascii=False)
     if "TASK: QUIZ" in system:

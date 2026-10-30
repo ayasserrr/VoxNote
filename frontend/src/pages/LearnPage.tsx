@@ -24,8 +24,8 @@ export default function LearnPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const active = courses?.filter((c) => c.stats.completed_count < c.stats.lesson_count || c.status !== "completed") ?? [];
-  const done = courses?.filter((c) => c.status === "completed" && c.stats.lesson_count > 0 && c.stats.completed_count === c.stats.lesson_count) ?? [];
+  const active = courses?.filter((c) => !c.stats.certified) ?? [];
+  const done = courses?.filter((c) => c.stats.certified) ?? [];
   return (
     <div>
       <PageHeader
@@ -51,7 +51,7 @@ export default function LearnPage() {
       )}
       {done.length > 0 && (
         <>
-          <h2 className="section-title">Completed</h2>
+          <h2 className="section-title">Completed & certified</h2>
           <div className="grid">{done.map((c) => <CourseCard key={c.id} c={c} />)}</div>
         </>
       )}
